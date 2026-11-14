@@ -10,15 +10,15 @@
 
 | Пункт чек-листа §6 | Результат | Примечание |
 |---|---|---|
-| 19 golden-тестов T-01…T-12 зеленые против calc.py и сервера | OK | 131 passed, 1 warning in 19.08s |
+| 19 golden-тестов T-01…T-12 зеленые против calc.py и сервера | OK | 131 passed, 1 warning in 22.49s |
 | Линтер политики: позитивные прогоны обоих примеров | OK | docs/02-policy/policy.example.yaml: OK; repo-pack/policy.example.yaml: OK |
 | Миграции: alembic upgrade head + соответствие моделям (alembic check) | OK | upgrade head + check OK |
-| Интеграционные тесты сервера (T-01…T-12 через HTTP, идемпотентность) | OK | 131 passed, 1 warning in 18.75s |
-| Антифрод-тесты replay / synthetic / night spike | OK | 131 passed, 1 warning in 18.61s |
-| Тесты эксплуатации M8 (метрики, бэкап-логика, dayclose_cli) | OK | 131 passed, 1 warning in 19.00s |
-| Тесты релиза M9 (лицензия, устройства, docs-сайт) | OK | 131 passed, 1 warning in 20.88s |
-| Docs-сайт собирается из репозитория, только approved (D9) | OK | docs-site: опубликовано 28, пропущено (не approved) 4 → C:\Users\potap\AppData\Local\Temp\tmps2aiij4c |
-| Снапшоты и юридический пакет: тесты M7 (гейты G-01…G-08) | OK | 131 passed, 1 warning in 18.85s |
+| Интеграционные тесты сервера (T-01…T-12 через HTTP, идемпотентность) | OK | 131 passed, 1 warning in 23.81s |
+| Антифрод-тесты replay / synthetic / night spike | OK | 131 passed, 1 warning in 22.35s |
+| Тесты эксплуатации M8 (метрики, бэкап-логика, dayclose_cli) | OK | 131 passed, 1 warning in 22.80s |
+| Тесты релиза M9 (лицензия, устройства, docs-сайт) | OK | 131 passed, 1 warning in 22.80s |
+| Docs-сайт собирается из репозитория, только approved (D9) | OK | docs-site: опубликовано 28, пропущено (не approved) 7 |
+| Снапшоты и юридический пакет: тесты M7 (гейты G-01…G-08) | OK | 131 passed, 1 warning in 28.43s |
 
 ## Организационные пункты (закрываются у пилотного клиента)
 
