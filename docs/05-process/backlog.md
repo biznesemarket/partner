@@ -28,7 +28,7 @@
 |---|---|---|---|
 | B-01 | ~~Нет `partner-agent-kit` (IDE-плагин + MCP-сервер): сессии и heartbeat умеет отправлять только HTTP-клиент~~ | закрыто в v1.1: CLI/daemon, офлайн-буфер, подпись, MCP, VS Code | P0 |
 | B-02 | ~~Нет `partner-connector-*` (GitHub/Forgejo/Gitea): ветки, PR, задачи, вебхуки~~ | закрыто в v1.1: вебхуки push/PR/issues, `repo_facts`, привязка сессий, backfill | P0 |
-| B-03 | Нет транспорта `agent_chat`: канал пишет только в журнал сервера | дайджест не доставляется в чат агента автоматически | P1 |
+| B-03 | ~~Нет транспорта `agent_chat`: канал пишет только в журнал сервера~~ | закрыто: push в `PARTNER_AGENT_CHAT_URL` (+токен), журнал как fallback, MCP `partner_inbox` для pull | P1 |
 | B-04 | ~~Флаг `no_output` описан в time-accounting.md и connectors.md, но не реализован~~ | закрыто в v1.1: сигналы tool_calls + факты commit/pull_request; тесты | P1 |
 | B-05 | ~~Нет публикации пакета `partner-tracker` (PyPI/приватный индекс)~~ | закрыто v1.2: release-workflow собирает wheel/sdist и `dist-manifest.json`, CI `package-smoke` ставит приватный asset по токену, repo-pack fail-closed (`PARTNER_TRACKER_WHEEL`/`TOKEN`/`SHA256` или `INDEX_URL`) | P1 |
 | B-06 | ~~Нет живого прогона PostgreSQL/Docker Compose в CI~~ | закрыто v1.2: job `postgres-smoke` (миграции, seed, uvicorn, /healthz, закрытие дня) и `docker-build` | P1 |
@@ -71,7 +71,8 @@
 ### v1.2 · Эксплуатация и доверие (P1)
 
 1. [x] Tenant/RBAC-хардening и тесты изоляции (#4).
-2. Транспорт `agent_chat` (адаптер к чату агента) и шаблоны уведомлений.
+2. [x] Транспорт `agent_chat` (адаптер к чату агента), MCP `partner_inbox`
+   и шаблоны уведомлений.
 3. [x] Публикация пакета: release-workflow (wheel/sdist + `dist-manifest.json`),
    CI `package-smoke` (реальный приватный asset по токену), repo-pack
    workflow fail-closed: `PARTNER_TRACKER_WHEEL`/`TOKEN`/`SHA256` или

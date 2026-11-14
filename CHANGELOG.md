@@ -56,6 +56,15 @@
 
 ## [Незапланировано]
 
+### Транспорт agent_chat (B-03, 2026-11-14)
+
+- `notify.py`: канал `agent_chat` всегда пишет в журнал; при
+  `PARTNER_AGENT_CHAT_URL` отправляет JSON в адаптер чата агента
+  (`PARTNER_AGENT_CHAT_TOKEN` — Bearer), ошибка адаптера уходит в fallback.
+- `partner-agent-kit`: MCP-инструмент `partner_inbox` отдает очередь
+  уведомлений участника (`/v1/notifications`), `PartnerClient.list_notifications`.
+- Документация: overview, agent-kit, runbook, backlog.
+
 ### Надёжность legal.yaml и демо-профиль (T-04, T-07, 2026-11-14)
 
 - **legal.yaml**: межпроцессная блокировка `_state_lock` вокруг

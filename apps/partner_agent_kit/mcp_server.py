@@ -101,6 +101,24 @@ TOOLS: list[dict] = [
             "required": ["date", "reason", "confirm"],
         },
     },
+    {
+        "name": "partner_inbox",
+        "description": (
+            "Входящие дайджесты и уведомления участника (B-03): "
+            "канал agent_chat, статус доставки и текст."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "sent", "failed"],
+                    "default": "pending",
+                },
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+            },
+        },
+    },
 ]
 
 
@@ -231,6 +249,22 @@ class MCPServer:
                 opened_by=self.config.participant_id,
                 reason=reason,
                 interval_ids=list(arguments.get("interval_ids") or []),
+            )
+
+        if name == "partner_inbox":
+            status = str(arguments.get("status") or "pending")
+            if status not in ("pending", "sent", "failed"):
+                raise MCPToolError("status: pending | sent | failed")
+            try:
+                limit = int(arguments.get("limit") or 20)
+            except (TypeError, ValueError) as err:
+                raise MCPToolError("limit должен быть числом 1..100") from err
+            if not 1 <= limit <= 100:
+                raise MCPToolError("limit должен быть в диапазоне 1..100")
+            return self.client.list_notifications(
+                recipient=self.config.participant_id,
+                status=status,
+                limit=limit,
             )
 
         raise MCPToolError(f"инструмент не реализован: {name}")
