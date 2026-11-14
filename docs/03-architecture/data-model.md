@@ -5,7 +5,7 @@
 | Версия | 2.2 |
 | Дата | 2026-11-13 |
 | Заменяет | D5-data-model (перенос + сессии, heartbeat, дни, версии) |
-| Связанные | overview, ADR-0016, ADR-0019, apps/partner_cli/schema.sql (прототип), apps/partner_server/models.py (реализация), migrations/versions/0001_initial.py … 0006_connectors.py |
+| Связанные | overview, ADR-0016, ADR-0019, ADR-0021, apps/partner_cli/schema.sql (прототип), apps/partner_server/models.py (реализация), migrations/versions/0001_initial.py … 0007_tenant_rbac.py |
 | Статус | Реализовано в M4–M6: ORM + миграции Alembic, SQLite (demo) и PostgreSQL (prod) |
 
 ## 1. Реализация M4 и целевая схема
@@ -130,7 +130,7 @@ participants 1──n day_records n──1 projects
 | rate/valuation версии не задним числом | проверка в коде + V-04 в policy_lint |
 | Сессия без task_ref | флаг no_task_link, интервалы не оплачиваются |
 | День в поясе проекта | date хранится вместе с tz; разрез по 00:00 пояса |
-| День принадлежит проекту (v1.2) | project_id обязателен; новый day_id = project|participant|date, legacy participant|date читается через find_day_record |
+| День принадлежит проекту (v1.2) | project_id обязателен; новый day_id = `project\|participant\|date`, legacy `participant\|date` читается через find_day_record |
 | Списки не смешивают tenant/project (v1.2) | tenant-токен → фильтр tenant_id; status/summary, disputes, notifications, audit, snapshots |
 | Один открытый спор на день | проверка в disputes.open_dispute → dispute_already_open |
 | Решение по спору — в окне 3 дней | window_deadline; просрочка → expired + dispute_window_expired |

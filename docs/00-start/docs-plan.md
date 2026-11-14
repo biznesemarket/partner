@@ -229,7 +229,7 @@ docs-сайт — tools/build_docs_site.py, только approved, артефа�
 | docs/02-policy/policy.schema.json | код | approved | 1.0 |
 | docs/02-policy/policy.example.yaml | код | approved | 1.0 |
 | docs/03-architecture/overview.md | разработчик | draft | 1.0 → C4 в D4 |
-| docs/03-architecture/data-model.md | разработчик | approved | 2.0 (M4 реализован) |
+| docs/03-architecture/data-model.md | разработчик | approved | 2.2 (v1.2 tenant/RBAC) |
 | docs/03-architecture/connectors.md | разработчик | approved | 1.1 (реализовано v1.1) |
 | docs/03-architecture/agent-kit.md | разработчик | approved | 1.0 (реализовано v1.1) |
 | docs/03-architecture/onboarding-wizard.md | директор | approved | 1.0 |
@@ -266,7 +266,7 @@ docs-сайт — tools/build_docs_site.py, только approved, артефа�
 | **Остаток** | **~16–24 ч** | |
 
 D4 и D6 можно вести параллельно; D7 ждет ревью юриста. После закрытия
-остатка план документации соответствует коду v1.0.0.
+остатка план документации соответствует коду v1.2.0.
 
 ## 7. Правила изменения плана
 

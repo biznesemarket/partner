@@ -97,3 +97,4 @@ late_rejected, 0 ₽ до решения директора (T-09). Оба пу�
 | 2.0 | 2026-11-13 | M5: реализация детектов (night/synthetic/replay/clock_skew/late), изоляция 403, аудит; подпись устройств → M8 |
 | 2.1 | 2026-11-13 | M9: подпись устройств реализована (devices, HMAC heartbeat, тесты tests/test_devices.py) |
 | 1.0 | 2026-11-13 | Адаптация D7: + атаки на время, красные тесты MVP |
+| 2.2 | 2026-11-14 | v1.2 tenant/RBAC: PARTNER_TENANT_TOKENS, project-scoped day records, фильтры списков (issue #4) |
