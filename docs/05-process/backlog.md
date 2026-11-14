@@ -30,7 +30,7 @@
 | B-03 | Нет транспорта `agent_chat`: канал пишет только в журнал сервера | дайджест не доставляется в чат агента автоматически | P1 |
 | B-04 | ~~Флаг `no_output` описан в time-accounting.md и connectors.md, но не реализован~~ | закрыто в v1.1: сигналы tool_calls + факты commit/pull_request; тесты | P1 |
 | B-05 | Нет публикации пакета `partner-tracker` (PyPI/приватный индекс) | `repo-pack/workflows` и quickstart ссылаются на несуществующую установку | P1 |
-| B-06 | Нет живого прогона PostgreSQL/Docker Compose в CI | миграции проверены offline и SQLite; риск PG-специфичных ошибок | P1 |
+| B-06 | ~~Нет живого прогона PostgreSQL/Docker Compose в CI~~ | закрыто v1.2: job `postgres-smoke` (миграции, seed, uvicorn, /healthz, закрытие дня) и `docker-build` | P1 |
 
 ## 3. Технический долг и риски
 
@@ -63,8 +63,9 @@
 2. [x] `partner-connector-github/forgejo`: вебхуки push/pull_request/issues,
    привязка сессии к задаче/ветке, факты коммитов/PR, backfill через API.
 3. [x] `no_output`-детект на основе signals и фактов коннектора + тесты.
-4. [ ] Docker Compose с PostgreSQL в CI (service container) и smoke-тест
-   (нужна машина с доступом к Debian-репозиториям; issue #5).
+4. [x] Docker Compose с PostgreSQL в CI (service container) и smoke-тест:
+   `postgres-smoke` + `docker-build` в `.github/workflows/partner-ci.yml`
+   (issue #5).
 
 ### v1.2 · Эксплуатация и доверие (P1)
 

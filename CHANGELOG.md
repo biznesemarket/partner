@@ -16,6 +16,10 @@
   перезаписывает принятый `day_record`; повтор идемпотентен, поздние события
   создают append-only `adjustment` на дельту, повторная компенсация не
   дублируется; дайджест показывает пересчет и компенсацию.
+- **PostgreSQL и Docker в CI (issue #5)**: job `postgres-smoke` с
+  `postgres:16` — `alembic upgrade head`/`check`, seed, uvicorn, `/healthz`,
+  закрытие и чтение дня; job `docker-build` — compose config и сборка образа.
+  Добавлен идемпотентный `python -m partner_server.seed`.
 
 ## [1.1.0] — 2026-11-14
 

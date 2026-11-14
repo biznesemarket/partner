@@ -36,6 +36,7 @@ partner = "partner_cli.cli:app"
 partner-agent = "partner_agent_kit.cli:app"
 partner-mcp = "partner_agent_kit.mcp_server:main"
 partner-connector = "partner_connectors.cli:app"
+partner-seed = "partner_server.seed:main"
 
 [build-system]
 requires = ["setuptools>=68"]
