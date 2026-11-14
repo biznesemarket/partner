@@ -202,12 +202,14 @@ PostgreSQL и Docker в CI (#5), поставка `partner-tracker` с release-
 дашборд директора (#10), fail-closed поставка wheel с манифестом,
 транспорт `agent_chat` (B-03), RBAC-роли (T-06), блокировка `legal.yaml`
 (T-04) и обезличенный демо-профиль (T-07).
-**203 теста**, CI Linux + Windows + postgres-smoke + package-smoke.
+**212 тестов**, CI Linux + Windows + postgres-smoke + package-smoke.
 Акт приемки v1.0.0 — docs/05-process/release-acceptance.md.
 
-**Что дальше.** Ревью юриста по `legal-module.md` (D7), онбординг
-клиентских `PARTNER_TRACKER_*` секретов, branch protection после GitHub Pro.
-Порядок и разрывы — в [docs/05-process/backlog.md](docs/05-process/backlog.md).
+**Что дальше.** Внешнее ревью юриста по `legal-module.md` (D7) и
+организационные пункты пилота. Репозиторий публичный: `main` защищен
+(PR + 5 проверок CI), а wheel ставится из публичного release с проверкой
+`sha256` — токены клиентского репозитория не требуются. Порядок и
+разрывы — в [docs/05-process/backlog.md](docs/05-process/backlog.md).
 
 ## Лицензия
 

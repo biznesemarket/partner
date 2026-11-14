@@ -1,4 +1,4 @@
-"""Тесты поставки: разрешение приватного release asset и манифест dist.
+"""Тесты поставки: разрешение release asset и манифест dist.
 
 Сценарии:
 - D-01  latest/точный тег выбирают только опубликованный релиз
@@ -7,6 +7,7 @@
 - D-04  недостающий digest вычисляется по скачанному файлу
 - D-05  манифест сверяет sha256 файлов с релизом и падает при расхождении
 - D-06  repo-pack workflow не откатывается на публичный PyPI (fail closed)
+- D-07  публичный release не требует PAT: browser URL и sha256 достаточно
 """
 from __future__ import annotations
 
@@ -198,6 +199,65 @@ def test_download_wheel_verifies_sha(tmp_path):
 
     path = dist.download_wheel(resolution, tmp_path, None, download=good)
     assert path.read_bytes() == body
+
+
+# --- D-07 ----------------------------------------------------------------
+
+def test_public_release_commands_use_browser_url_without_token():
+    resolution = dist.resolve_release(
+        "acme/partner", "1.2.0", None, transport=lambda url, token: _release()
+    )
+    commands = dist.gh_secret_commands(resolution, "acme/site")
+    assert any("PARTNER_TRACKER_WHEEL" in command for command in commands)
+    assert all("api.github.com" not in command for command in commands)
+    assert any(resolution["browser_url"] in command for command in commands)
+    assert not any("PARTNER_TRACKER_TOKEN" in command for command in commands)
+
+
+def test_private_release_commands_use_api_url_and_token():
+    resolution = dist.resolve_release(
+        "acme/partner", "1.2.0", "secret", transport=lambda url, token: _release()
+    )
+    commands = dist.gh_secret_commands(resolution, "acme/site", authenticated=True)
+    assert any(resolution["api_url"] in command for command in commands)
+    assert any("PARTNER_TRACKER_TOKEN" in command for command in commands)
+    rendered = dist.render_resolution(
+        resolution, "acme/site", authenticated=True
+    )
+    assert "PARTNER_TRACKER_TOKEN" in rendered
+    assert "токен не требуется" not in rendered
+
+
+def test_render_resolution_does_not_require_pat_for_public_release():
+    resolution = dist.resolve_release(
+        "acme/partner", "1.2.0", None, transport=lambda url, token: _release()
+    )
+    rendered = dist.render_resolution(resolution, "acme/site")
+    assert resolution["browser_url"] in rendered
+    assert "PARTNER_TRACKER_TOKEN" not in rendered
+    assert "PARTNER_TRACKER_SHA256" in rendered
+
+
+def test_download_wheel_uses_api_asset_for_public_and_private(tmp_path):
+    resolution = {
+        "api_url": "https://api.example/asset",
+        "browser_url": "https://github.example/releases/download/v1/w.whl",
+        "wheel": WHEEL,
+        "sha256": hashlib.sha256(b"good").hexdigest(),
+    }
+    urls: list[str] = []
+
+    def good(url: str, token: str | None, dest: Path):
+        urls.append(url)
+        dest.write_bytes(b"good")
+        return dest
+
+    dist.download_wheel(resolution, tmp_path, None, download=good)
+    assert urls == [resolution["api_url"]]
+
+    urls.clear()
+    dist.download_wheel(resolution, tmp_path, "secret", download=good)
+    assert urls == [resolution["api_url"]]
 
 
 # --- D-06 ----------------------------------------------------------------

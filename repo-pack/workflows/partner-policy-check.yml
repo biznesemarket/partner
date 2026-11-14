@@ -22,13 +22,13 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Установить partner-tracker (приватный индекс или wheel)
+      - name: Установить partner-tracker (публичный release или приватный индекс)
         env:
-          # Вариант 1: URL wheel-артефакта из приватного релиза (секрет репозитория).
+          # Вариант 1: URL wheel из GitHub Release (публичный или секрет зеркала).
           PARTNER_TRACKER_WHEEL: ${{ secrets.PARTNER_TRACKER_WHEEL }}
           # Вариант 2: приватный PyPI-индекс.
           PARTNER_TRACKER_INDEX_URL: ${{ secrets.PARTNER_TRACKER_INDEX_URL }}
-          # Токен для api.github.com (fine-grained PAT, Contents: Read-only).
+          # Токен нужен только для приватного API URL (fine-grained PAT).
           PARTNER_TRACKER_TOKEN: ${{ secrets.PARTNER_TRACKER_TOKEN }}
           # Ожидаемый sha256 wheel из dist-manifest.json релиза.
           PARTNER_TRACKER_SHA256: ${{ secrets.PARTNER_TRACKER_SHA256 }}
@@ -48,17 +48,20 @@ jobs:
           wheel="${tmp}/partner_tracker-0.0.0-py3-none-any.whl"
           case "${PARTNER_TRACKER_WHEEL}" in
             https://api.github.com/*)
-              if [ -z "${PARTNER_TRACKER_TOKEN}" ]; then
-                echo "::error::Для приватного release asset нужен PARTNER_TRACKER_TOKEN"
-                exit 1
+              if [ -n "${PARTNER_TRACKER_TOKEN}" ]; then
+                curl -fsSL --retry 3 \
+                  -H "Authorization: Bearer ${PARTNER_TRACKER_TOKEN}" \
+                  -H "Accept: application/octet-stream" \
+                  -o "${wheel}" "${PARTNER_TRACKER_WHEEL}"
+              else
+                # Публичный репозиторий: API asset доступен без токена.
+                curl -fsSL --retry 3 \
+                  -H "Accept: application/octet-stream" \
+                  -o "${wheel}" "${PARTNER_TRACKER_WHEEL}"
               fi
-              curl -fsSL --retry 3 \
-                -H "Authorization: Bearer ${PARTNER_TRACKER_TOKEN}" \
-                -H "Accept: application/octet-stream" \
-                -o "${wheel}" "${PARTNER_TRACKER_WHEEL}"
               ;;
             *)
-              # Публичный URL или приватный индекс — без передачи токена.
+              # Публичный browser URL или приватный индекс — без токена.
               curl -fsSL --retry 3 -o "${wheel}" "${PARTNER_TRACKER_WHEEL}"
               ;;
           esac

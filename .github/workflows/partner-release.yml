@@ -44,3 +44,19 @@ jobs:
           python tools/partner_dist.py manifest \
             --dist dist --tag "${{ github.ref_name }}" --out dist-manifest.json
           gh release upload "${{ github.ref_name }}" dist-manifest.json --clobber
+      - name: Проверить опубликованный asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf /tmp/release-check && mkdir -p /tmp/release-check
+          python tools/partner_dist.py resolve \
+            --version "${{ github.ref_name }}" \
+            --download /tmp/release-check --json > /tmp/release-check/resolution.json
+          python -m venv /tmp/release-check-venv
+          /tmp/release-check-venv/bin/pip install --upgrade pip
+          /tmp/release-check-venv/bin/pip install /tmp/release-check/*.whl
+          mkdir -p /tmp/release-check-client
+          cp repo-pack/policy.example.yaml /tmp/release-check-client/policy.yaml
+          cd /tmp/release-check-client
+          /tmp/release-check-venv/bin/partner day --demo > /tmp/release-check/day.out
+          test -s /tmp/release-check/day.out

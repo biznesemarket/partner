@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Поставка partner-tracker: приватный wheel и манифест релиза.
+"""Поставка partner-tracker: wheel из GitHub Release и манифест релиза.
 
-resolve — найти собранный wheel в GitHub Release и вывести URL артефакта,
-sha256 и команды настройки секретов клиентского репозитория.
+resolve — найти собранный wheel в GitHub Release и вывести публичный URL,
+sha256 и команды настройки клиентского репозитория.
 manifest — собрать `dist-manifest.json` из файлов dist/ и метаданных
 опубликованного релиза (используется release-workflow).
 
-Для приватного репозитория нужен токен: `--token`, `GITHUB_TOKEN` или
-`GH_TOKEN` (fine-grained PAT, Contents: Read-only). Токен не печатается.
+Релиз публичный: токен не требуется. Для приватного зеркала или обхода
+лимитов GitHub API можно передать `--token`, `GITHUB_TOKEN` или `GH_TOKEN`
+(fine-grained PAT, Contents: Read-only). Токен не печатается. При
+аутентифицированном resolve команды клиента используют API URL и
+`PARTNER_TRACKER_TOKEN`; для публичного — browser URL без токена.
 
 Запуск:
   python tools/partner_dist.py resolve --version latest --target-repo acme/site
-  python tools/partner_dist.py resolve --version 1.2.0 --download dist-release
-  python tools/partner_dist.py manifest --dist dist --tag v1.2.0 --out dist-manifest.json
+  python tools/partner_dist.py resolve --version 1.3.0 --download dist-release
+  python tools/partner_dist.py manifest --dist dist --tag v1.3.0 --out dist-manifest.json
 """
 from __future__ import annotations
 
@@ -69,7 +72,7 @@ def http_json(url: str, token: str | None) -> object:
 
 
 def download_asset(api_url: str, token: str | None, dest: pathlib.Path) -> pathlib.Path:
-    """Скачать release asset через API (для приватного репозитория)."""
+    """Скачать release asset: API URL приватного repo или browser URL публичного."""
     request = urllib.request.Request(
         api_url, headers=_headers(token, accept=BINARY_ACCEPT)
     )
@@ -201,14 +204,35 @@ def resolve_release(
     }
 
 
-def gh_secret_commands(resolution: dict, target_repo: str) -> list[str]:
-    """Команды настройки клиентского репозитория; токен задается отдельно."""
-    return [
+def delivery_url(resolution: dict) -> str:
+    """Публичный URL для клиента: browser URL релиза, иначе API URL."""
+    return str(resolution.get("browser_url") or resolution["api_url"])
+
+
+def gh_secret_commands(
+    resolution: dict, target_repo: str, *, authenticated: bool = False
+) -> list[str]:
+    """Команды настройки клиентского репозитория.
+
+    Публичный release: browser URL + sha256, токен не нужен.
+    Приватное зеркало/API: api_url + sha256 + PARTNER_TRACKER_TOKEN.
+    """
+    wheel_url = (
+        str(resolution["api_url"]) if authenticated else delivery_url(resolution)
+    )
+    commands = [
         f'gh secret set PARTNER_TRACKER_WHEEL --repo {target_repo} '
-        f'--body "{resolution["api_url"]}"',
+        f'--body "{wheel_url}"',
         f'gh secret set PARTNER_TRACKER_SHA256 --repo {target_repo} '
         f'--body "{resolution["sha256"]}"',
     ]
+    if authenticated:
+        commands.append(
+            f'gh secret set PARTNER_TRACKER_TOKEN --repo {target_repo}  '
+            f'# fine-grained PAT: Contents: Read-only на '
+            f'{resolution.get("repo", "<vendor-repo>")}'
+        )
+    return commands
 
 
 def download_wheel(
@@ -219,6 +243,8 @@ def download_wheel(
     download: Callable[[str, str | None, pathlib.Path], pathlib.Path] = download_asset,
 ) -> pathlib.Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
+    # API asset отдает байты и для публичного репозитория; browser URL
+    # остается для команд клиента и ручного скачивания.
     path = download(str(resolution["api_url"]), token, dest_dir / str(resolution["wheel"]))
     actual = sha256_file(path)
     if actual != resolution["sha256"]:
@@ -276,17 +302,28 @@ def build_manifest(
     }
 
 
-def render_resolution(resolution: dict, target_repo: str) -> str:
+def render_resolution(
+    resolution: dict, target_repo: str, *, authenticated: bool = False
+) -> str:
     lines = [
         f"Поставка partner-tracker {resolution['version']} ({resolution['tag']})",
         f"  wheel:  {resolution['wheel']}",
+        f"  url:    {delivery_url(resolution)}",
         f"  api:    {resolution['api_url']}",
         f"  sha256: {resolution['sha256']}",
         "",
         f"Секреты клиентского репозитория {target_repo}:",
-        *[f"  {command}" for command in gh_secret_commands(resolution, target_repo)],
-        "  gh secret set PARTNER_TRACKER_TOKEN --repo "
-        f"{target_repo}  # fine-grained PAT: Contents: Read-only на {resolution['repo']}",
+        *[
+            f"  {command}"
+            for command in gh_secret_commands(
+                resolution, target_repo, authenticated=authenticated
+            )
+        ],
+        (
+            "Приватный источник: токен нужен, задайте его отдельно."
+            if authenticated
+            else "Публичный релиз: токен не требуется."
+        ),
     ]
     return "\n".join(lines)
 
@@ -314,8 +351,12 @@ def main(argv: list[str] | None = None) -> int:
 
     resolve_parser = sub.add_parser("resolve", help="найти wheel и sha256 в релизе")
     resolve_parser.add_argument("--repo", default=DEFAULT_REPO, help="owner/repo вендора")
-    resolve_parser.add_argument("--version", default="latest", help="latest | 1.2.0 | v1.2.0")
-    resolve_parser.add_argument("--token", default=None, help="GitHub token (или GITHUB_TOKEN/GH_TOKEN)")
+    resolve_parser.add_argument("--version", default="latest", help="latest | 1.3.0 | v1.3.0")
+    resolve_parser.add_argument(
+        "--token",
+        default=None,
+        help="GitHub token для приватного зеркала (или GITHUB_TOKEN/GH_TOKEN)",
+    )
     resolve_parser.add_argument("--target-repo", default="<client-repo>")
     resolve_parser.add_argument("--download", type=pathlib.Path, default=None, help="каталог для wheel")
     resolve_parser.add_argument("--out", type=pathlib.Path, default=None, help="записать JSON")
@@ -335,6 +376,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.handler == "resolve":
             resolution = resolve_release(args.repo, args.version, token)
+            resolution["authenticated"] = bool(token)
             if args.download:
                 path = download_wheel(resolution, args.download, token)
                 resolution["downloaded"] = str(path)
@@ -343,7 +385,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.json:
                 print(json.dumps(resolution, ensure_ascii=False, indent=2))
             else:
-                print(render_resolution(resolution, args.target_repo))
+                print(
+                    render_resolution(
+                        resolution, args.target_repo, authenticated=bool(token)
+                    )
+                )
             return 0
 
         release = fetch_release(args.repo, args.tag, token)

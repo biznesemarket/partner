@@ -18,7 +18,7 @@
 - v1.1: `partner-agent` (сессии, heartbeat 30 с, офлайн-буфер, подпись),
   MCP stdio, VS Code-обертка; `partner-connector` и вебхуки GitHub/Forgejo
   с фактами `repo_facts`; флаг `no_output`.
-- Калькулятор дня с golden-сценариями T-01…T-12; 171 тест; CI Linux +
+- Калькулятор дня с golden-сценариями T-01…T-12; 212 тестов; CI Linux +
   Windows + PostgreSQL smoke + package-smoke.
 - Поставка Docker Compose, бэкапы, runbook, docs-сайт, акт приемки.
 
@@ -30,7 +30,7 @@
 | B-02 | ~~Нет `partner-connector-*` (GitHub/Forgejo/Gitea): ветки, PR, задачи, вебхуки~~ | закрыто в v1.1: вебхуки push/PR/issues, `repo_facts`, привязка сессий, backfill | P0 |
 | B-03 | ~~Нет транспорта `agent_chat`: канал пишет только в журнал сервера~~ | закрыто: push в `PARTNER_AGENT_CHAT_URL` (+токен), журнал как fallback, MCP `partner_inbox` для pull | P1 |
 | B-04 | ~~Флаг `no_output` описан в time-accounting.md и connectors.md, но не реализован~~ | закрыто в v1.1: сигналы tool_calls + факты commit/pull_request; тесты | P1 |
-| B-05 | ~~Нет публикации пакета `partner-tracker` (PyPI/приватный индекс)~~ | закрыто v1.2: release-workflow собирает wheel/sdist и `dist-manifest.json`, CI `package-smoke` ставит приватный asset по токену, repo-pack fail-closed (`PARTNER_TRACKER_WHEEL`/`TOKEN`/`SHA256` или `INDEX_URL`) | P1 |
+| B-05 | ~~Нет публикации пакета `partner-tracker` (PyPI/приватный индекс)~~ | закрыто v1.2: release-workflow собирает wheel/sdist и `dist-manifest.json`, CI `package-smoke` ставит реальный asset, repo-pack fail-closed (`PARTNER_TRACKER_WHEEL`/`SHA256` или `INDEX_URL`); после публикации репозитория токен не нужен | P1 |
 | B-06 | ~~Нет живого прогона PostgreSQL/Docker Compose в CI~~ | закрыто v1.2: job `postgres-smoke` (миграции, seed, uvicorn, /healthz, закрытие дня) и `docker-build` | P1 |
 
 ## 3. Технический долг и риски
@@ -41,7 +41,7 @@
 | T-02 | ~~`month_digest` считает остаток пула по всем `day_records` без фильтра проекта~~ | закрыто v1.2: фильтр `project_id` в месячном дайджесте/снапшоте, тесты |
 | T-03 | ~~Повторное закрытие дня перезаписывает `day_record` при изменившихся данных~~ | закрыто v1.2: ADR-0021, запись неизменяема, компенсации append-only, тесты |
 | T-04 | ~~`legal.yaml` пишется без блокировки~~ | закрыто: межпроцессный `_state_lock` + атомарная замена `os.replace`, тесты конкурентности/атомарности |
-| T-05 | `manual_only_policy: bill` бросает `NotImplementedError` | `calc.py` | оставить явный отказ в API или реализовать по ADR |
+| T-05 | ~~`manual_only_policy: bill` бросает `NotImplementedError`~~ | закрыто: `CalcError` → 422 `manual_only_policy_not_supported` в API, тесты `test_calc.py`/`test_server.py` | — |
 | T-06 | ~~Лимиты/пагинация части эндпоинтов и отсутствие RBAC ролей~~ | закрыто: роли director/participant/lawyer, `participant_scope_denied`, аудит `access.denied`; лимиты/пагинация остаются по мере роста |
 | T-07 | ~~Демо-ответ мастера содержит ФИО директора tenant #1~~ | закрыто: `demo()` = ООО «Демо» / Директор (демо), тест `test_wizard.py` |
 
@@ -53,7 +53,7 @@
 | D-02 | ~~`connectors.md` — протоколы GitHub/Forgejo, подпись вебхуков, ретраи~~ | закрыто v1.2 (#8): connectors.md 1.2 |
 | D-03 | ~~`08-guides/morning-developer.md` и `director-day.md`~~ | закрыто v1.2 (#8): оба гайда approved |
 | D-04 | `legal-module.md` — ревью юриста (гейты G-01…G-08) | на ревью |
-| D-05 | OpenAPI-выжимка для клиента (сейчас — автогенерация `/docs`) | backlog |
+| D-05 | ~~OpenAPI-выжимка для клиента (сейчас — автогенерация `/docs`)~~ | закрыто: `docs/03-architecture/api-reference.md`, генератор `tools/openapi_digest.py`, тест синхронности |
 
 ## 5. Порядок работ
 
@@ -74,9 +74,10 @@
 2. [x] Транспорт `agent_chat` (адаптер к чату агента), MCP `partner_inbox`
    и шаблоны уведомлений.
 3. [x] Публикация пакета: release-workflow (wheel/sdist + `dist-manifest.json`),
-   CI `package-smoke` (реальный приватный asset по токену), repo-pack
-   workflow fail-closed: `PARTNER_TRACKER_WHEEL`/`TOKEN`/`SHA256` или
-   `INDEX_URL`, публичный PyPI не используется (issue #6).
+   CI `package-smoke` (реальный release asset), repo-pack workflow
+   fail-closed: `PARTNER_TRACKER_WHEEL`/`SHA256` или `INDEX_URL`,
+   публичный PyPI не используется (issue #6); публичный release не
+   требует токена, PAT — только для приватного зеркала.
 4. [x] Документация D4/D6: C4 overview, протоколы коннекторов и два гайда
    (issue #8).
 5. [x] Инвариант закрытого дня: ADR-0021, запрет перезаписи, компенсации (#7).

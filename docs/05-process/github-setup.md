@@ -2,10 +2,10 @@
 
 | Поле | Значение |
 |---|---|
-| Версия | 1.0 |
+| Версия | 1.1 |
 | Дата | 2026-11-14 |
 | Аудитория | владелец репозитория, тимлид |
-| Репозиторий | https://github.com/biznesemarket/partner (private) |
+| Репозиторий | https://github.com/biznesemarket/partner (public) |
 
 ## 1. Первый push
 
@@ -42,30 +42,58 @@ gh auth status                          # аккаунт с правами admin
 Скрипт выставляет описание и topics, создает метки (`p0`, `p1`, `p2`,
 `agent-kit`, `connectors`, `docs`, `tech-debt`, `security`, `ci`,
 `dependencies`, `paid-task`, `dispute`), вехи `v1.1`–`v1.3`, backlog-issues
-из `docs/05-process/backlog.md` и защиту `main` (PR + 1 ревью + CI).
+из `docs/05-process/backlog.md`, защиту `main` и security-функции.
 
-Если защита не включилась (приватный репозиторий на бесплатном плане):
-Settings → Branches → Add branch protection rule для `main`:
+Публичный репозиторий на Free-плане поддерживает branch protection.
+Текущая защита `main` (идемпотентно выставляется скриптом):
 
-- Require a pull request before merging (1 approval, dismiss stale reviews);
-- Require status checks: `test (ubuntu-latest)`, `test (windows-latest)`;
+- Require a pull request before merging (0 approvals — единственный
+  коллаборатор, временное исключение AGENTS.md §2; `dismiss_stale_reviews`);
+- Require status checks (strict): `test (ubuntu-latest)`,
+  `test (windows-latest)`, `postgres-smoke`, `docker-build`,
+  `package-smoke`;
 - Require conversation resolution;
-- Do not allow force pushes.
+- Do not allow force pushes;
+- Do not allow deletions;
+- Enforce for administrators.
 
-## 3. Проверка после публикации
+Если API не сработал: Settings → Branches → Add branch protection rule
+для `main` и повторите те же пункты.
+
+## 3. Безопасность публичного репозитория
+
+Включено в Settings → Code security and analysis (скрипт выставляет
+идемпотентно; часть функций зависит от плана GitHub):
+
+| Функция | Назначение |
+|---|---|
+| Secret scanning | поиск секретов в истории и новых push |
+| Secret scanning push protection | блокировка push с найденным секретом |
+| Dependabot alerts + security updates | уязвимые зависимости |
+| Private vulnerability reporting | приватный канал для исследователей (`SECURITY.md`) |
+| CodeQL default setup (Python) | статический анализ на push/PR |
+
+Проверка: `gh api repos/<owner/repo>/secret-scanning/alerts?state=open`
+должен вернуть `[]` (алертов нет), а `gh api
+repos/<owner/repo>/private-vulnerability-reporting` — `{"enabled": true}`.
+Секреты в клиентские репозитории не коммитятся и не передаются в PR
+публичного репозитория.
+
+## 4. Проверка после публикации
 
 | Проверка | Ожидание |
 |---|---|
 | Actions → partner-ci | зеленый на Linux и Windows |
+| Actions → CodeQL | default setup для Python выполняется |
 | Issues → New issue | доступны шаблоны `partner-issue` и `contribution-dispute` |
-| Settings → Actions | workflows включены, секреты не требуются |
+| Settings → Actions | workflows включены, секреты в PR из форков не нужны |
 | Code → main | README, docs, сервер, CLI, тесты на месте |
-| Releases | тег `v1.0.0` (по желанию: `git tag -a v1.0.0 -m "Partner v1.0.0" && git push origin v1.0.0`) |
+| Releases | тег `v1.3.0` и `dist-manifest.json` (публичные артефакты) |
 
-## 4. Что не автоматизировано
+## 5. Что не автоматизировано
 
 - Выдача лицензионных ключей (`tools/license_issue.py`) — вендорский
   процесс, реестр `license-registry.json` не коммитится.
-- Публикация `partner-tracker` в приватный индекс — отдельная задача
-  (backlog B-05).
+- Приватный индекс — опционален для организаций; базовая поставка —
+  публичный wheel из GitHub Release с проверкой `sha256` (B-05).
 - Живой пилот у клиента — организационный пункт акта приемки.

@@ -213,7 +213,9 @@ HTTP API: routes.py, connector_routes.py
 
 ## 6. API v1.3
 
-Полная автогенерация — `/docs` (OpenAPI FastAPI). Группы:
+Краткая выжимка для клиента — [`api-reference.md`](api-reference.md)
+(генерируется из `app.openapi()`); полная спецификация — `/docs`
+(OpenAPI FastAPI). Группы:
 
 | Группа | Эндпоинты |
 |---|---|
@@ -236,8 +238,8 @@ HTTP API: routes.py, connector_routes.py
 Статическая страница `/dashboard` не содержит данных: она запрашивает их
 у `/v1` с токеном из `sessionStorage`.
 `project_id` в query сужает запрос до проекта tenant; без него берется
-первый проект tenant. Ошибки возвращаются как `{ "code": "...",
-"detail": "..." }`; коды домена (`day_not_closed`, `cross_tenant_denied`,
+первый проект tenant. Ошибки возвращаются как `{ "detail": { "code": "...",
+"detail": "..." } }`; коды домена (`day_not_closed`, `cross_tenant_denied`,
 `version_backdated` и т. п.) совпадают с текстом документа.
 
 ## 7. Развертывание

@@ -426,6 +426,7 @@ def _status_for(err: service.DomainError) -> int:
 
 @router.get("/healthz", tags=["system"])
 def healthz(db: Session = Depends(get_db)):
+    """Проверка живости API и БД для healthcheck."""
     db.execute(select(1))
     return {"status": "ok"}
 
@@ -453,6 +454,7 @@ def create_session(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_roles("director", "participant")),
 ):
+    """Создать сессию участника; повтор с тем же session_id идемпотентен."""
     existing = db.get(models.Session, payload.session_id)
     ensure_participant_scope(db, principal, payload.participant_id)
     if existing is not None:
@@ -490,6 +492,7 @@ def post_heartbeat(
     x_partner_sign: str | None = Header(default=None),
     principal: Principal = Depends(require_roles("director", "participant")),
 ):
+    """Принять heartbeat: идемпотентно по event_id, с опциональной подписью устройства."""
     # M9 (threat-model §4): подпись устройства HMAC-SHA256 по канонической
     # строке события. Заголовки необязательны при require_device_sign=0;
     # при 1 неподписанный батч отклоняется (unsigned_heartbeat).
@@ -609,6 +612,7 @@ def revoke_device(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_roles("director", "participant")),
 ):
+    """Отозвать устройство участника; последующие подписанные heartbeat отклоняются."""
     device = db.get(models.Device, device_id)
     if device is None:
         raise HTTPException(404, f"устройство {device_id!r} не найдено")
@@ -650,6 +654,7 @@ def get_day(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_roles("director", "participant")),
 ):
+    """День участника: часы, сумма, доля и флаги; до закрытия — preview."""
     # Аудит F1 (P0): суммы/доли дня — персональные финансовые данные;
     # читаются только с Bearer (data-model.md §аутентификация). Открыты
     # лишь задокументированно публичные /v1/metrics и /v1/license.
@@ -668,6 +673,7 @@ def close_day(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_roles("director", "participant")),
 ):
+    """Закрыть день: неизменяемая запись, идемпотентно, поздние события — в adjustments."""
     check_tenant_isolation(db, project, participant_id, principal)
     try:
         return service.close_day(db, project, participant_id, date)
@@ -694,9 +700,16 @@ def explain_day(
 ):
     """Объяснение начисления: интервалы, union-секунды по классам, капы, версии."""
     check_tenant_isolation(db, project, participant_id, principal)
-    pieces, flags, agent_attached = service.day_intervals(db, project, participant_id, date)
-    computed = service.compute_day(db, project, participant_id, date)
-    pol, _, params = service.load_policy(db, project.project_id)
+    try:
+        pieces, flags, agent_attached = service.day_intervals(
+            db, project, participant_id, date
+        )
+        computed = service.compute_day(db, project, participant_id, date)
+        pol, _, params = service.load_policy(db, project.project_id)
+    except service.DomainError as err:
+        raise HTTPException(
+            _status_for(err), {"code": err.code, "detail": err.message}
+        )
     return {
         **computed,
         "explain": {
@@ -781,6 +794,7 @@ def status_month(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_roles("director", "participant")),
 ):
+    """Месячный статус участника: закрытые дни, суммы, доля и флаги."""
     check_tenant_isolation(db, project, participant_id, principal)
     rows = db.execute(
         select(

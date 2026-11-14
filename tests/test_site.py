@@ -54,6 +54,7 @@ def test_draft_docs_not_published(site):
     assert not any("legal-module" in nm for nm in names)
     # approved есть, включая C4 overview и контракты v1.1/v1.2
     assert "docs__03-architecture__overview.html" in names
+    assert "docs__03-architecture__api-reference.html" in names
     assert "docs__03-architecture__connectors.html" in names
     assert "docs__03-architecture__agent-kit.html" in names
     assert "docs__08-guides__morning-developer.html" in names

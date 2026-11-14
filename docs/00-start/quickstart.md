@@ -15,8 +15,8 @@
 
 ```bash
 # в корне репозитория проекта клиента
-# поставка: приватный индекс или wheel-артефакт релиза (см. installation.md §3)
-pip install --index-url <PRIVATE_INDEX> partner-tracker
+# поставка: wheel из публичного GitHub Release или приватный индекс (installation.md §3)
+pip install ./partner_tracker-1.3.0-py3-none-any.whl
 partner init
 ```
 
@@ -96,6 +96,6 @@ partner snapshot 2026-10     # месячный итог и прогресс в�
 | Проверка | Команда | Ожидание |
 |---|---|---|
 | Политика валидна | `python tools/policy_lint.py policy.yaml` | `OK: политика валидна …` |
-| Калькулятор корректен | `pytest` (в репозитории продукта) | 203 passed (T-01…T-12 + сервер) |
+| Калькулятор корректен | `pytest` (в репозитории продукта) | 212 passed (T-01…T-12 + сервер) |
 | Демо-день считается | `partner day --demo` | 6,6 ч → 3 300 ₽ → 0,0330% |
 | Правила в AGENTS.md | открыть `AGENTS.md` | блок «Правила учета «Партнер»» на месте |

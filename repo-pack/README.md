@@ -16,16 +16,15 @@
 
 1. Установить `partner-tracker` из поставки:
    - приватный индекс: `pip install --index-url <PRIVATE_INDEX> partner-tracker`;
-   - wheel из приватного GitHub Release: вендор выдает API URL asset и
-     `sha256` из `dist-manifest.json`; скачать можно с токеном
-     (`Authorization: Bearer <PAT>`, `Accept: application/octet-stream`)
-     и установить локальный `.whl`;
+   - wheel из публичного GitHub Release: browser URL и `sha256` берется
+     из `dist-manifest.json`, токен не нужен;
    - локальная разработка: `pip install -e .` из этого репозитория.
-   В CI клиента задайте секреты `PARTNER_TRACKER_WHEEL` (API URL asset),
-   `PARTNER_TRACKER_TOKEN` (fine-grained PAT, Contents: Read-only на
-   репозиторий вендора) и `PARTNER_TRACKER_SHA256`; альтернатива —
-   `PARTNER_TRACKER_INDEX_URL`. Публичный PyPI не используется: без
-   секретов workflow падает, а не ставит одноименный чужой пакет.
+   В CI клиента задайте `PARTNER_TRACKER_WHEEL` (публичный browser URL
+   wheel или API URL приватного зеркала) и `PARTNER_TRACKER_SHA256`;
+   `PARTNER_TRACKER_TOKEN` нужен только для приватного API URL, а
+   `PARTNER_TRACKER_INDEX_URL` — альтернатива для приватного индекса.
+   Публичный PyPI не используется: без явного источника workflow падает,
+   а не ставит одноименный чужой пакет.
 2. `partner init` — ответить на 10 обязательных вопросов; опциональные
    (юридические) можно пропустить и заполнить позже.
 3. Проверить предпросмотр, подтвердить — мастер коммитит «policy v1.0».

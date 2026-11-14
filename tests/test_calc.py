@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
 
 from partner_cli import calc
 
@@ -109,6 +110,14 @@ def test_t10_manual_track_only():
     assert r.paid_hours == Decimal("4")
     assert r.amount_cents == 0
     assert "manual_track_only" in r.flags
+
+
+def test_t05_manual_bill_is_explicitly_unsupported():
+    """T-05: bill без ADR — явная ошибка домена, а не NotImplementedError/500."""
+    pol = calc.Policy(manual_only_policy="bill")
+    with pytest.raises(calc.CalcError) as exc:
+        calc.calc_day([hours(4, calc.CLASS_ACTIVE)], pol, agent_attached=False)
+    assert exc.value.code == "manual_only_policy_not_supported"
 
 
 def test_t11_quality_factor():
