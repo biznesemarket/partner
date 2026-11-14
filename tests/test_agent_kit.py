@@ -329,7 +329,7 @@ def test_mcp_tools_and_human_confirmation(client, tmp_path):
     }
     assert names == {
         "partner_start_session", "partner_heartbeat", "partner_status",
-        "partner_day", "partner_explain", "partner_dispute",
+        "partner_day", "partner_explain", "partner_dispute", "partner_inbox",
     }
 
     denied = mcp.handle({
@@ -362,6 +362,42 @@ def test_mcp_tools_and_human_confirmation(client, tmp_path):
         "params": {"name": "partner_status", "arguments": {}},
     })
     assert "dev1" in status["result"]["content"][0]["text"]
+
+    inbox = mcp.handle({
+        "jsonrpc": "2.0", "id": 8, "method": "tools/call",
+        "params": {"name": "partner_inbox", "arguments": {"status": "pending"}},
+    })
+    assert "isError" not in inbox["result"]
+    bad_inbox = mcp.handle({
+        "jsonrpc": "2.0", "id": 9, "method": "tools/call",
+        "params": {"name": "partner_inbox", "arguments": {"status": "bogus"}},
+    })
+    assert bad_inbox["result"]["isError"] is True
+
+
+def test_mcp_inbox_returns_pending_digest(client, factory, tmp_path):
+    """B-03: агент может забрать дайджест из очереди через MCP."""
+    from partner_server import notify
+
+    with factory() as sess:
+        notify.queue(
+            sess,
+            kind="day_digest",
+            recipient="dev1",
+            payload={"date": "2026-11-12"},
+            text="Дайджест дня 2026-11-12: 6.6 ч, 3 300 ₽",
+        )
+
+    transport = HttpTestTransport(client)
+    cfg = _config(tmp_path)
+    mcp = MCPServer(cfg, client=_client(cfg, transport), clock=FakeClock())
+    result = mcp.handle({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "partner_inbox", "arguments": {"limit": 5}},
+    })
+    text = result["result"]["content"][0]["text"]
+    assert "Дайджест дня 2026-11-12" in text
+    assert "day_digest" in text
 
 
 # ---------- daemon ----------

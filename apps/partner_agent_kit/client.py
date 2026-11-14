@@ -187,6 +187,21 @@ class PartnerClient:
         query = urllib.parse.urlencode({"participant_id": participant_id})
         return self._request("GET", f"/days/{date}/explain?{query}")
 
+    def list_notifications(
+        self,
+        *,
+        recipient: str | None = None,
+        status: str = "pending",
+        limit: int = 50,
+    ) -> dict:
+        """B-03: входящие уведомления/дайджесты для чата агента."""
+        params = {"status": status, "limit": limit}
+        if recipient:
+            params["recipient"] = recipient
+        return self._request(
+            "GET", "/notifications?" + urllib.parse.urlencode(params)
+        )
+
     def open_dispute(
         self,
         date: str,

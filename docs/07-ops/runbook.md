@@ -70,11 +70,14 @@ Runbook — инструкции для человека на дежурстве
 ### 4.3 Дайджесты не доставляются
 
 1. `GET /v1/notifications?status=failed` — канал и last_error.
-2. Webhook: проверить `PARTNER_WEBHOOK_URL` доступность (curl с хоста).
+2. `agent_chat`: журнал всегда доступен; для push проверьте
+   `PARTNER_AGENT_CHAT_URL`/`PARTNER_AGENT_CHAT_TOKEN` (адаптер чата агента).
+   Агент может забрать очередь через MCP `partner_inbox`.
+3. Webhook: проверить `PARTNER_WEBHOOK_URL` доступность (curl с хоста).
    SMTP: `PARTNER_SMTP_HOST/PORT/FROM/TO`, попытки — 3 (attempts),
    после чего `failed`; повтор — `docker compose restart server`
    (retry_pending выполняется при старте).
-3. Доставка не влияет на расчеты: дайджест — витрина (ADR-0018).
+4. Доставка не влияет на расчеты: дайджест — витрина (ADR-0018).
 
 ### 4.4 Спор о дне
 

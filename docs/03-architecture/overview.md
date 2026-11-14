@@ -54,7 +54,7 @@
 | 2 | Разработчик → agent-kit → сервер | сессии, интервалы heartbeat, сигналы активности | HTTPS, Bearer + HMAC устройства |
 | 3 | ИИ-агент → MCP-сервер agent-kit | вызовы инструментов `partner_*`, подтверждение человека | stdio JSON-RPC |
 | 4 | Git-платформа → сервер | push, pull_request, issues: только метаданные | HTTPS, HMAC вебхука |
-| 5 | Сервер → каналы | дневной и месячный дайджест, уведомления о спорах | SMTP / webhook / журнал `agent_chat` |
+| 5 | Сервер → каналы | дневной и месячный дайджест, уведомления о спорах | SMTP / webhook / `agent_chat` push + журнал |
 | 6 | Сервер → юрист | политика, снапшоты, гейты, вопросы, шаблоны | CLI-экспорт, ручная передача |
 | 7 | Сервер → репозиторий | sha256 и git-якорь месячного снапшота | git CLI из процесса `legal.py` |
 
@@ -87,7 +87,7 @@
 | `partner-cli` | Python, Typer | мастер `init`, локальные `day`/`explain`/`snapshot`, серверные `digest`, `dispute*`, `policy set`, `snapshot-close`, `legal-*`, `export-legal` | SQLite прототипа для demo; HTTPS к серверу |
 | `partner-connector` | Python CLI | backfill веток, PR и issues из API платформы и импорт в сервер | без своей БД; API платформы + HTTPS к серверу |
 | `repo-pack` | Markdown/YAML/workflow | устанавливаемые в репозиторий клиента правила, политика и CI-проверка | файлы в git клиента |
-| Каналы уведомлений | SMTP, HTTP webhook, журнал `agent_chat` | доставка дайджестов и уведомлений | внешние адресаты; в v1.2 `agent_chat` — только журнал (B-03) |
+| Каналы уведомлений | SMTP, HTTP webhook, `agent_chat` (push в адаптер + журнал) | доставка дайджестов и уведомлений | внешние адресаты; `PARTNER_AGENT_CHAT_URL/TOKEN` (B-03) |
 
 ## 4. C4 L3 — компоненты сервера
 

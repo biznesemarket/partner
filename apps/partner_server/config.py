@@ -21,8 +21,12 @@ class Settings:
     close_tz: str = "Europe/Moscow"
     # M6.3 каналы доставки дайджестов. Порядок: агент-чат (основной),
     # email (fallback), webhook (мессенджеры). Канал включается, только
-    # если задан его адрес; agent_chat встроен (доставка в журнал/CLI).
+    # если задан его адрес; agent_chat всегда доступен через журнал/CLI.
     notify_channels: tuple[str, ...] = ("agent_chat", "email", "webhook")
+    # B-03: транспорт agent_chat. Пусто — встроенный журнал/CLI; URL —
+    # HTTP POST в адаптер чата агента (мост IDE/мессенджера).
+    agent_chat_url: str = ""
+    agent_chat_token: str = ""
     webhook_url: str = ""
     smtp_host: str = ""
     smtp_port: int = 587
@@ -63,6 +67,8 @@ class Settings:
             scheduler_enabled=os.getenv("PARTNER_SCHEDULER", "0") == "1",
             grace_hours=float(os.getenv("PARTNER_GRACE_HOURS", "24")),
             close_tz=os.getenv("PARTNER_CLOSE_TZ", cls.close_tz),
+            agent_chat_url=os.getenv("PARTNER_AGENT_CHAT_URL", ""),
+            agent_chat_token=os.getenv("PARTNER_AGENT_CHAT_TOKEN", ""),
             webhook_url=os.getenv("PARTNER_WEBHOOK_URL", ""),
             smtp_host=os.getenv("PARTNER_SMTP_HOST", ""),
             smtp_port=int(os.getenv("PARTNER_SMTP_PORT", "587")),

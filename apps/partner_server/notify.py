@@ -74,10 +74,39 @@ def queue(
 
 
 def _send_agent_chat(sess: Session, n: models.Notification) -> None:
-    """Основной канал: чат агента. Встроенная реализация — журнал сервера
-    (установщик подключает свой транспорт в M8; контракт не меняется)."""
+    """Основной канал: чат агента.
+
+    Всегда пишет в журнал сервера. Если задан PARTNER_AGENT_CHAT_URL,
+    дополнительно отправляет JSON в адаптер чата (мост IDE/мессенджера);
+    ошибка адаптера — ошибка активной попытки, включается fallback.
+    """
     log.info("дайджест [%s] для %s:\n%s", n.kind, n.recipient, n.text or "")
-    # Текст уже хранится в notifications.text — CLI `partner digest` читает из БД.
+    if not settings.agent_chat_url:
+        return
+    body = json.dumps(
+        {
+            "notification_id": n.notification_id,
+            "kind": n.kind,
+            "recipient": n.recipient,
+            "text": n.text,
+            "payload": n.payload_json,
+            "tenant_id": n.tenant_id,
+            "project_id": n.project_id,
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    headers = {"Content-Type": "application/json; charset=utf-8"}
+    if settings.agent_chat_token:
+        headers["Authorization"] = f"Bearer {settings.agent_chat_token}"
+    req = urllib.request.Request(
+        settings.agent_chat_url,
+        data=body,
+        headers=headers,
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        if resp.status >= 300:
+            raise RuntimeError(f"agent_chat вернул {resp.status}")
 
 
 def _send_email(sess: Session, n: models.Notification) -> None:
@@ -125,7 +154,7 @@ _SENDERS = {
 
 def _channel_configured(channel: str) -> bool:
     if channel == "agent_chat":
-        return True  # встроенный канал доступен всегда
+        return True  # журнал сервера доступен всегда; URL — опциональный push
     if channel == "email":
         return bool(settings.smtp_host)
     if channel == "webhook":
