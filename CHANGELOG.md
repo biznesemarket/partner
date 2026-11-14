@@ -20,6 +20,12 @@
   `postgres:16` — `alembic upgrade head`/`check`, seed, uvicorn, `/healthz`,
   закрытие и чтение дня; job `docker-build` — compose config и сборка образа.
   Добавлен идемпотентный `python -m partner_server.seed`.
+- **Поставка `partner-tracker` (issue #6)**: release-workflow собирает
+  wheel/sdist и создает GitHub Release; CI `package-smoke` ставит wheel в
+  чистое окружение и прогоняет `partner day --demo` + `policy_lint` на
+  чистом репозитории клиента; repo-pack workflow поддерживает
+  `PARTNER_TRACKER_WHEEL`/`PARTNER_TRACKER_INDEX_URL`; `jsonschema` и
+  `tzdata` добавлены в зависимости пакета; версия 1.2.0.
 
 ## [1.1.0] — 2026-11-14
 

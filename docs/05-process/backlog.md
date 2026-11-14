@@ -29,7 +29,7 @@
 | B-02 | ~~Нет `partner-connector-*` (GitHub/Forgejo/Gitea): ветки, PR, задачи, вебхуки~~ | закрыто в v1.1: вебхуки push/PR/issues, `repo_facts`, привязка сессий, backfill | P0 |
 | B-03 | Нет транспорта `agent_chat`: канал пишет только в журнал сервера | дайджест не доставляется в чат агента автоматически | P1 |
 | B-04 | ~~Флаг `no_output` описан в time-accounting.md и connectors.md, но не реализован~~ | закрыто в v1.1: сигналы tool_calls + факты commit/pull_request; тесты | P1 |
-| B-05 | Нет публикации пакета `partner-tracker` (PyPI/приватный индекс) | `repo-pack/workflows` и quickstart ссылаются на несуществующую установку | P1 |
+| B-05 | ~~Нет публикации пакета `partner-tracker` (PyPI/приватный индекс)~~ | закрыто v1.2: release-workflow собирает wheel/sdist, CI `package-smoke`, repo-pack берет `PARTNER_TRACKER_WHEEL`/`INDEX_URL` | P1 |
 | B-06 | ~~Нет живого прогона PostgreSQL/Docker Compose в CI~~ | закрыто v1.2: job `postgres-smoke` (миграции, seed, uvicorn, /healthz, закрытие дня) и `docker-build` | P1 |
 
 ## 3. Технический долг и риски
@@ -71,7 +71,8 @@
 
 1. Tenant/RBAC-хардening и тесты изоляции.
 2. Транспорт `agent_chat` (адаптер к чату агента) и шаблоны уведомлений.
-3. Публикация пакета и repo-pack workflow под реальный индекс.
+3. [x] Публикация пакета: release-workflow (wheel/sdist), CI `package-smoke`,
+   repo-pack workflow с приватным индексом/артефактом (issue #6).
 4. Инвариант закрытого дня: ADR, запрет перезаписи, компенсации.
 
 ### v1.3 · Витрина (P2)

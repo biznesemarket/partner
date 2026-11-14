@@ -14,7 +14,13 @@
 
 ## Порядок установки (кратко)
 
-1. `pip install partner-tracker` (реальная поставка) или `pip install -e .` (из этого репозитория).
+1. Установить `partner-tracker` из поставки:
+   - приватный индекс: `pip install --index-url <PRIVATE_INDEX> partner-tracker`;
+   - wheel-артефакт релиза: `pip install <URL>/partner_tracker-<version>-py3-none-any.whl`;
+   - локальная разработка: `pip install -e .` из этого репозитория.
+   В CI клиента задайте секрет `PARTNER_TRACKER_WHEEL` (URL артефакта) или
+   `PARTNER_TRACKER_INDEX_URL` — workflow `partner-policy-check.yml`
+   подхватит его автоматически.
 2. `partner init` — ответить на 10 обязательных вопросов; опциональные
    (юридические) можно пропустить и заполнить позже.
 3. Проверить предпросмотр, подтвердить — мастер коммитит «policy v1.0».

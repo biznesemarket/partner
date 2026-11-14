@@ -120,3 +120,41 @@ jobs:
         run: docker build -f deploy/Dockerfile -t partner:ci .
       - name: Проверить импорт сервера в образе
         run: docker run --rm partner:ci python -c "import partner_server.main; print('image OK')"
+
+  package-smoke:
+    name: package-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Собрать wheel и sdist
+        run: |
+          pip install build
+          python -m build
+      - name: Установить wheel в чистое окружение
+        run: |
+          python -m venv /tmp/pkg-venv
+          /tmp/pkg-venv/bin/pip install --upgrade pip
+          /tmp/pkg-venv/bin/pip install dist/*.whl
+          /tmp/pkg-venv/bin/partner --help >/dev/null
+          /tmp/pkg-venv/bin/python -c "import partner_cli, partner_agent_kit, partner_connectors; print('wheel OK')"
+      - name: "Чистый репозиторий клиента: policy + AGENTS + workflow"
+        run: |
+          rm -rf /tmp/client && mkdir -p /tmp/client/.github/workflows
+          cp repo-pack/policy.example.yaml /tmp/client/policy.yaml
+          cp repo-pack/AGENTS.block.md /tmp/client/AGENTS.md
+          cp repo-pack/workflows/partner-policy-check.yml /tmp/client/.github/workflows/
+          cd /tmp/client
+          /tmp/pkg-venv/bin/partner day --demo > day.out
+          test -s day.out
+          /tmp/pkg-venv/bin/python -m partner_cli.policy_lint policy.yaml --as-of 2026-11-14
+          grep -q "BEGIN PARTNER BLOCK" AGENTS.md
+          grep -q "END PARTNER BLOCK" AGENTS.md
+          echo "clean client repo OK"
+      - name: Артефакт поставки
+        uses: actions/upload-artifact@v4
+        with:
+          name: partner-tracker-dist
+          path: dist/

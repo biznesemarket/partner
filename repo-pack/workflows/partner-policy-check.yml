@@ -22,8 +22,20 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Установить зависимости валидатора
-        run: pip install partner-tracker
+      - name: Установить partner-tracker (приватный индекс или артефакт)
+        env:
+          # Вариант 1: URL wheel-артефакта из приватного релиза (секрет репозитория).
+          PARTNER_TRACKER_WHEEL: ${{ secrets.PARTNER_TRACKER_WHEEL }}
+          # Вариант 2: приватный PyPI-индекс.
+          PARTNER_TRACKER_INDEX_URL: ${{ secrets.PARTNER_TRACKER_INDEX_URL }}
+        run: |
+          if [ -n "$PARTNER_TRACKER_WHEEL" ]; then
+            pip install "$PARTNER_TRACKER_WHEEL"
+          elif [ -n "$PARTNER_TRACKER_INDEX_URL" ]; then
+            pip install --index-url "$PARTNER_TRACKER_INDEX_URL" partner-tracker
+          else
+            pip install partner-tracker
+          fi
 
       - name: Проверить policy.yaml
         run: |

@@ -15,9 +15,12 @@
 
 ```bash
 # в корне репозитория проекта клиента
-pip install partner-tracker          # в реальной поставке; сейчас: pip install -e .
+# поставка: приватный индекс или wheel-артефакт релиза (см. installation.md §3)
+pip install --index-url <PRIVATE_INDEX> partner-tracker
 partner init
 ```
+
+Для локальной разработки самого продукта: `pip install -e .`.
 
 ### Шаг 2. Ответить на вопросы мастера
 

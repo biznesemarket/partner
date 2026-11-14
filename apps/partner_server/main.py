@@ -69,7 +69,7 @@ def _today_local(tz_name: str) -> str:
 
 app = FastAPI(
     title="Партнер — сервер учета времени",
-    version="1.0.0",
+    version="1.2.0",
     description=(
         "M4: прием heartbeat (идемпотентно), сборка и закрытие дня (00:00 MSK), "
         "объяснение начисления, месячные сводки. M5: антифрод-детекты "
