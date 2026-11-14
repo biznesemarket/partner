@@ -119,6 +119,7 @@ HTTP API: routes.py, connector_routes.py
 | Коннекторы | `connectors.py`, `connector_routes.py`, `partner_connectors` | HMAC вебхука, дедупликация доставки, факты только из метаданных; заполнение пустых `task_ref`/`branch` сессий; `no_output` по фактам и `tool_calls`; backfill через API |
 | Юридический модуль | `legal.py` | по умолчанию выключен; гейты G-01…G-08; снапшот месяца иммутабелен: sha256 + git-якорь; пакет юристу без персональных данных. Документ `legal-module.md` ожидает ревью юриста (D7) |
 | Аудит, метрики, лицензия | `audit.py`, `ops.py`, `licensing.py` | append-only журнал действий и инцидентов; `/v1/metrics`; состояния лицензии `demo/active/grace/invalid/expired` |
+| Витрина директора | `dashboard.html` | `/dashboard` — самодостаточная HTML-страница без данных; сводка/флаги/споры/снапшоты/экспорт через `/v1` с Bearer-токеном; токен только в `sessionStorage` |
 
 ## 5. Ключевые потоки
 
@@ -195,6 +196,18 @@ HTTP API: routes.py, connector_routes.py
 4. Недоставленные уведомления повторяются при закрытии дня и старте
    сервера; статусы видны в `GET /v1/notifications`.
 
+### 5.7 Дашборд директора
+
+1. `/dashboard` отдает статическую страницу без встроенных данных; токен
+   вводится в браузере и хранится только в `sessionStorage`.
+2. Сводка — `GET /v1/status/summary`: исходные суммы и эффективные с
+   учетом append-only `adjustments`.
+3. Флаги — `GET /v1/flags`: антифрод/кап-флаги месяца, tenant/project-scoped.
+4. Споры и снапшоты — существующие `/v1/disputes` и `/v1/snapshots`;
+   решение спора и закрепление месяца идут через те же API.
+5. Экспорт CSV/JSON формируется в браузере из уже загруженных ответов;
+   сервер не хранит файлы экспорта.
+
 ## 6. API v1.2
 
 Полная автогенерация — `/docs` (OpenAPI FastAPI). Группы:
@@ -205,9 +218,9 @@ HTTP API: routes.py, connector_routes.py
 | Сессии и события | `POST /v1/sessions`, `POST /v1/heartbeats` |
 | Устройства | `POST /v1/devices`, `POST /v1/devices/{device_id}/revoke`, `GET /v1/devices` |
 | Дни | `GET /v1/days/{date}`, `POST /v1/days/{date}/close`, `GET /v1/days/{date}/explain` (параметр `participant_id` во всех) |
-| Статусы | `GET /v1/status/summary`, `GET /v1/status/{participant_id}` |
+| Статусы | `GET /v1/status/summary?month=YYYY-MM`, `GET /v1/status/{participant_id}`, `GET /v1/flags?month=YYYY-MM` (флаги для дашборда) |
 | Дайджесты | `GET /v1/digest/day/{date}`, `GET /v1/digest/month/{month}` (параметр `participant_id`) |
-| Споры | `POST /v1/days/{date}/disputes`, `POST /v1/disputes/{dispute_id}/resolve`, `GET /v1/disputes` |
+| Споры | `POST /v1/days/{date}/disputes`, `POST /v1/disputes/{dispute_id}/resolve`, `GET /v1/disputes` (status, month) |
 | Уведомления | `GET /v1/notifications` |
 | Политика | `POST /v1/policies`, `POST /v1/rate-versions` |
 | Аудит | `GET /v1/audit` |
@@ -217,6 +230,8 @@ HTTP API: routes.py, connector_routes.py
 
 Все данные-эндпоинты требуют Bearer, кроме перечисленных открытых;
 вебхук коннектора аутентифицируется HMAC-подписью платформы, а не Bearer.
+Статическая страница `/dashboard` не содержит данных: она запрашивает их
+у `/v1` с токеном из `sessionStorage`.
 `project_id` в query сужает запрос до проекта tenant; без него берется
 первый проект tenant. Ошибки возвращаются как `{ "code": "...",
 "detail": "..." }`; коды домена (`day_not_closed`, `cross_tenant_denied`,

@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Партнер — кабинет директора</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f6f4a'/%3E%3Ctext x='32' y='44' font-size='34' fill='white' text-anchor='middle' font-family='sans-serif'%3E%D0%9F%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f4f6f4;
+    --surface: #ffffff;
+    --border: #dce3dc;
+    --text: #1d2a22;
+    --muted: #627066;
+    --accent: #1f6f4a;
+    --accent-soft: #e7f2eb;
+    --warn: #a55a00;
+    --warn-soft: #fff3df;
+    --danger: #a12828;
+    --danger-soft: #fdeaea;
+    --radius: 14px;
+    --shadow: 0 8px 24px rgba(24, 48, 33, 0.06);
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, #eef4ef 0, var(--bg) 280px);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  h1, h2, h3, p { margin: 0; }
+  h1 { font-size: 1.25rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.05rem; letter-spacing: -0.01em; }
+  button, input, select { font: inherit; }
+  button {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 0.55rem 0.9rem;
+    cursor: pointer;
+  }
+  button:hover { border-color: #b9c8bd; }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  button.primary:hover { background: #195a3c; }
+  button.ghost { background: transparent; }
+  button.danger { color: var(--danger); border-color: #e6c4c4; }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+  input, select {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 9px;
+    padding: 0.5rem 0.65rem;
+    min-width: 0;
+  }
+  input:focus, select:focus, button:focus-visible {
+    outline: 2px solid #9ccdb2;
+    outline-offset: 1px;
+  }
+  label { display: grid; gap: 0.3rem; font-size: 0.78rem; color: var(--muted); }
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 1.1rem clamp(1rem, 4vw, 2.2rem);
+    background: rgba(255, 255, 255, 0.82);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  .brand { display: flex; align-items: center; gap: 0.8rem; }
+  .logo {
+    width: 2.4rem;
+    height: 2.4rem;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+  .brand p, .hint, .muted { color: var(--muted); font-size: 0.82rem; }
+  .controls { display: flex; align-items: end; gap: 0.55rem; flex-wrap: wrap; }
+  .controls label { min-width: 9rem; }
+  main {
+    width: min(1180px, calc(100% - 2rem));
+    margin: 1.2rem auto 3rem;
+    display: grid;
+    gap: 1rem;
+  }
+  .card, .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .login { padding: 1.4rem; max-width: 620px; display: grid; gap: 1rem; }
+  .login form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .login input { flex: 1 1 18rem; }
+  .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; }
+  .stat { padding: 1rem 1.1rem; display: grid; gap: 0.2rem; }
+  .stat .label { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat .value { font-size: 1.55rem; font-weight: 650; letter-spacing: -0.02em; }
+  .stat .sub { color: var(--muted); font-size: 0.8rem; }
+  .panel { overflow: hidden; }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    padding: 0.95rem 1.1rem;
+    border-bottom: 1px solid var(--border);
+    background: #fbfcfb;
+  }
+  .panel-head .tools { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .panel-body { padding: 0.2rem 0 0; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  th, td { text-align: left; padding: 0.65rem 1.1rem; border-bottom: 1px solid #edf1ed; vertical-align: top; }
+  th:last-child, td:last-child { padding-right: 1.5rem; }
+  th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; white-space: normal; }
+  tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.num { white-space: nowrap; }
+  td:first-child, td:nth-child(2) { white-space: nowrap; }
+  .empty { padding: 1.1rem; color: var(--muted); font-size: 0.88rem; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.12rem 0.55rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    background: var(--accent-soft);
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); }
+  .badge.danger { background: var(--danger-soft); color: var(--danger); }
+  .badge.muted { background: #eef1ee; color: var(--muted); }
+  .error {
+    border: 1px solid #efcaca;
+    background: var(--danger-soft);
+    color: var(--danger);
+    border-radius: 12px;
+    padding: 0.8rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: start;
+  }
+  .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .actions button { padding: 0.3rem 0.55rem; font-size: 0.78rem; border-radius: 8px; }
+  .footer { color: var(--muted); font-size: 0.78rem; padding: 0 0.2rem; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  [hidden] { display: none !important; }
+  @media (max-width: 860px) {
+    .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .topbar { position: static; }
+  }
+  @media (max-width: 560px) {
+    .cards { grid-template-columns: 1fr; }
+    .controls { width: 100%; }
+    .controls label { flex: 1 1 8rem; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">П</div>
+    <div>
+      <h1>Кабинет директора</h1>
+      <p>Партнер · сводка, флаги, споры, снапшоты</p>
+    </div>
+  </div>
+  <div class="controls">
+    <label>Проект
+      <input id="project" name="project" placeholder="по умолчанию" autocomplete="off">
+    </label>
+    <label>Месяц
+      <input id="month" name="month" type="month">
+    </label>
+    <button id="refresh" class="ghost" type="button">Обновить</button>
+    <button id="logout" class="ghost" type="button" hidden>Выйти</button>
+  </div>
+</header>
+
+<main>
+  <section id="login" class="card login" aria-labelledby="login-title">
+    <div>
+      <h2 id="login-title">Подключение к серверу</h2>
+      <p class="hint">Введите Bearer-токен директора (PARTNER_API_TOKEN или tenant-токен).
+        Токен хранится только в sessionStorage этой вкладки.</p>
+    </div>
+    <form id="login-form">
+      <label class="sr-only" for="token">Токен</label>
+      <input id="token" type="password" placeholder="Bearer-токен" autocomplete="off" required>
+      <button class="primary" type="submit">Войти</button>
+      <button id="demo" class="ghost" type="button">Демо без токена</button>
+    </form>
+    <p class="hint">Демо-режим работает, только если сервер запущен без PARTNER_API_TOKEN
+      (локальная установка).</p>
+  </section>
+
+  <div id="error" class="error" role="alert" hidden>
+    <span id="error-text"></span>
+    <button id="error-close" class="ghost" type="button" aria-label="Закрыть">×</button>
+  </div>
+
+  <div id="app" hidden>
+    <section class="cards" aria-label="Итоги месяца">
+      <div class="card stat"><span class="label">Месяц</span><span id="stat-month" class="value">—</span><span id="stat-project" class="sub">—</span></div>
+      <div class="card stat"><span class="label">Оплачено</span><span id="stat-hours" class="value">—</span><span class="sub">часов за месяц</span></div>
+      <div class="card stat"><span class="label">Начислено</span><span id="stat-amount" class="value">—</span><span class="sub">с корректировками</span></div>
+      <div class="card stat"><span class="label">Участники</span><span id="stat-participants" class="value">—</span><span class="sub">в сводке проекта</span></div>
+    </section>
+
+    <section class="panel" aria-labelledby="summary-title">
+      <div class="panel-head">
+        <h2 id="summary-title">Сводка месяца</h2>
+        <div class="tools">
+          <button id="export-summary" type="button">CSV сводки</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <table>
+          <thead><tr><th>Участник</th><th class="num">Оплачено, ч</th><th class="num">Начислено, ₽</th><th class="num">Корректировка, ₽</th><th class="num">Эффективно, ₽</th></tr></thead>
+          <tbody id="summary-rows"></tbody>
+        </table>
+        <div id="summary-empty" class="empty" hidden>За выбранный месяц закрытых дней нет.</div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="flags-title">
+      <div class="panel-head">
+        <h2 id="flags-title">Флаги</h2>
+        <div class="tools">
+          <label>Код
+            <select id="flag-filter"><option value="">Все флаги</option></select>
+          </label>
+          <button id="export-flags" type="button">CSV флагов</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <table>
+          <thead><tr><th>Дата</th><th>Участник</th><th>Флаг</th><th>Детали</th><th class="num">Часы</th><th class="num">Сумма, ₽</th><th class="num">Эффективно, ₽</th></tr></thead>
+          <tbody id="flags-rows"></tbody>
+        </table>
+        <div id="flags-empty" class="empty" hidden>Флагов за месяц нет.</div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="disputes-title">
+      <div class="panel-head">
+        <h2 id="disputes-title">Споры</h2>
+        <div class="tools">
+          <label>Статус
+            <select id="dispute-status">
+              <option value="open">Открытые</option>
+              <option value="resolved">Решённые</option>
+              <option value="rejected">Отклонённые</option>
+              <option value="expired">Истёкшие</option>
+              <option value="">Все</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="panel-body">
+        <table>
+          <thead><tr><th>Спор</th><th>День</th><th>Участник</th><th>Причина</th><th>Дедлайн</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="disputes-rows"></tbody>
+        </table>
+        <div id="disputes-empty" class="empty" hidden>Споров с таким статусом нет.</div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="snapshots-title">
+      <div class="panel-head">
+        <h2 id="snapshots-title">Снапшоты</h2>
+        <div class="tools">
+          <label>Кто закрепляет
+            <input id="snapshot-actor" placeholder="director" autocomplete="off">
+          </label>
+          <button id="snapshot-close" class="primary" type="button">Закрепить месяц</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <table>
+          <thead><tr><th>Месяц</th><th>Snapshot ID</th><th>SHA-256</th><th>Git-якорь</th><th>Создан</th></tr></thead>
+          <tbody id="snapshots-rows"></tbody>
+        </table>
+        <div id="snapshots-empty" class="empty" hidden>Снапшотов по проекту нет.</div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="export-title">
+      <div class="panel-head">
+        <h2 id="export-title">Экспорт</h2>
+        <div class="tools">
+          <button id="export-json" type="button">Скачать JSON</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <p class="empty">CSV сводки и флагов — кнопками в разделах; полный JSON содержит
+          сводку, флаги, споры и снапшоты текущего представления.</p>
+      </div>
+    </section>
+
+    <p class="footer">Данные приходят из защищённого /v1 API. Корректировки закрытых дней —
+      append-only: дашборд показывает эффективную сумму, но не перезаписывает расчёт.</p>
+  </div>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = (sel) => document.querySelector(sel);
+  const state = {
+    token: sessionStorage.getItem("partner_token") || "",
+    project: sessionStorage.getItem("partner_project") || "",
+    month: sessionStorage.getItem("partner_month") || currentMonth(),
+    summary: null,
+    flags: [],
+    flagFilter: "",
+    disputes: [],
+    disputeStatus: "open",
+    snapshots: [],
+  };
+
+  function currentMonth() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function setError(message) {
+    const box = $("#error");
+    if (!message) {
+      box.hidden = true;
+      $("#error-text").textContent = "";
+      return;
+    }
+    $("#error-text").textContent = message;
+    box.hidden = false;
+  }
+
+  function errorMessage(err) {
+    if (err && err.payload) {
+      const detail = err.payload.detail;
+      if (typeof detail === "string") return detail;
+      if (detail && typeof detail === "object") {
+        return `${detail.code || "ошибка"}: ${detail.detail || JSON.stringify(detail)}`;
+      }
+      return err.payload.code || err.message;
+    }
+    return err && err.message ? err.message : String(err);
+  }
+
+  async function api(path, options = {}) {
+    const url = new URL(path, window.location.origin);
+    if (state.project && !url.searchParams.has("project_id")) {
+      url.searchParams.set("project_id", state.project);
+    }
+    const headers = { Accept: "application/json", ...(options.headers || {}) };
+    if (state.token) headers.Authorization = `Bearer ${state.token}`;
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+      logout();
+      throw new Error("Сессия истекла: войдите заново");
+    }
+    if (!response.ok) {
+      let payload = null;
+      try { payload = await response.json(); } catch (_) { /* not JSON */ }
+      const err = new Error(`HTTP ${response.status}`);
+      err.payload = payload;
+      throw err;
+    }
+    return response.json();
+  }
+
+  function el(tag, attrs = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs || {})) {
+      if (value === undefined || value === null) continue;
+      if (key === "class") node.className = value;
+      else if (key === "text") node.textContent = value;
+      else if (key.startsWith("on") && typeof value === "function") {
+        node.addEventListener(key.slice(2).toLowerCase(), value);
+      } else {
+        node.setAttribute(key, value);
+      }
+    }
+    for (const child of children.flat()) {
+      if (child === null || child === undefined) continue;
+      node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    }
+    return node;
+  }
+
+  function money(cents) {
+    return (Number(cents || 0) / 100).toLocaleString("ru-RU", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function hours(seconds) {
+    return (Number(seconds || 0) / 3600).toLocaleString("ru-RU", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function hoursValue(value) {
+    return Number(value || 0).toLocaleString("ru-RU", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function rubValue(value) {
+    return Number(value || 0).toLocaleString("ru-RU", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function formatDateTime(value) {
+    if (!value) return "—";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function badge(text, tone = "") {
+    return el("span", { class: `badge ${tone}`.trim(), text });
+  }
+
+  function setBusy(button, busy, label) {
+    if (!button) return;
+    if (busy) {
+      button.dataset.label = button.textContent;
+      button.textContent = label || "…";
+      button.disabled = true;
+    } else {
+      button.textContent = button.dataset.label || button.textContent;
+      delete button.dataset.label;
+      button.disabled = false;
+    }
+  }
+
+  function updateUrlState() {
+    if (state.project) sessionStorage.setItem("partner_project", state.project);
+    else sessionStorage.removeItem("partner_project");
+    sessionStorage.setItem("partner_month", state.month);
+    $("#project").value = state.project;
+    $("#month").value = state.month;
+  }
+
+  function showAppLoggedIn() {
+    $("#login").hidden = true;
+    $("#app").hidden = false;
+    $("#logout").hidden = false;
+    $("#token").value = "";
+  }
+
+  function showLogin() {
+    $("#login").hidden = false;
+    $("#app").hidden = true;
+    $("#logout").hidden = true;
+    setError("");
+  }
+
+  function logout() {
+    state.token = "";
+    sessionStorage.removeItem("partner_token");
+    state.summary = null;
+    state.flags = [];
+    state.disputes = [];
+    state.snapshots = [];
+    showLogin();
+  }
+
+  function loginWithToken(token) {
+    state.token = token;
+    sessionStorage.setItem("partner_token", token);
+    showAppLoggedIn();
+    loadAll();
+  }
+
+  function renderSummary() {
+    const summary = state.summary || { participants: [] };
+    const rows = summary.participants || [];
+    $("#stat-month").textContent = summary.month || state.month;
+    $("#stat-project").textContent = summary.project_id || state.project || "по умолчанию";
+    const totalHours = rows.reduce((acc, row) => acc + Number(row.paid_hours_month || 0), 0);
+    const totalRub = rows.reduce(
+      (acc, row) => acc + Number(row.effective_amount_rub || row.amount_rub_month || 0),
+      0,
+    );
+    $("#stat-hours").textContent = hoursValue(totalHours);
+    $("#stat-amount").textContent = `${rubValue(totalRub)} ₽`;
+    $("#stat-participants").textContent = String(rows.length);
+    const body = $("#summary-rows");
+    body.replaceChildren(...rows.map((row) => {
+      const deltaCents = Number(row.adjustments_delta_cents || 0);
+      return el("tr", {},
+        el("td", { text: row.participant_id }),
+        el("td", { class: "num", text: hoursValue(row.paid_hours_month) }),
+        el("td", { class: "num", text: rubValue(row.amount_rub_month) }),
+        el("td", { class: "num", text: deltaCents ? (deltaCents / 100).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—" }),
+        el("td", { class: "num", text: rubValue(row.effective_amount_rub || row.amount_rub_month) }),
+      );
+    }));
+    $("#summary-empty").hidden = rows.length > 0;
+  }
+
+  function renderFlags() {
+    const filter = state.flagFilter;
+    const rows = state.flags.filter((flag) => !filter || flag.code === filter);
+    const body = $("#flags-rows");
+    body.replaceChildren(...rows.map((flag) =>
+      el("tr", {},
+        el("td", { text: flag.date }),
+        el("td", { text: flag.participant_id }),
+        el("td", {}, badge(flag.code, "warn")),
+        el("td", { text: flag.detail || "—" }),
+        el("td", { class: "num", text: hours(flag.paid_seconds) }),
+        el("td", { class: "num", text: money(flag.amount_cents) }),
+        el("td", { class: "num", text: money(flag.effective_amount_cents) }),
+      )
+    ));
+    $("#flags-empty").hidden = rows.length > 0;
+    const select = $("#flag-filter");
+    const codes = [...new Set(state.flags.map((flag) => flag.code))].sort();
+    const current = select.value;
+    select.replaceChildren(
+      el("option", { value: "", text: "Все флаги" }),
+      ...codes.map((code) => el("option", { value: code, text: code })),
+    );
+    if (codes.includes(current)) select.value = current;
+    else select.value = "";
+    state.flagFilter = select.value;
+  }
+
+  function statusBadge(status) {
+    if (status === "open") return badge("открыт", "warn");
+    if (status === "resolved") return badge("решён", "");
+    if (status === "rejected") return badge("отклонён", "muted");
+    if (status === "expired") return badge("истёк", "danger");
+    return badge(status, "muted");
+  }
+
+  function directorName() {
+    let name = sessionStorage.getItem("partner_actor");
+    if (!name) {
+      name = window.prompt("Имя директора для аудита решения:", "director");
+      if (!name) return null;
+      name = name.trim();
+      if (!name) return null;
+      sessionStorage.setItem("partner_actor", name);
+    }
+    return name;
+  }
+
+  async function resolveDispute(dispute, decision, button) {
+    const actor = directorName();
+    if (!actor) return;
+    const body = { decided_by: actor, decision };
+    if (decision === "approved") {
+      const raw = window.prompt(
+        "Дельта к сумме дня в рублях (отрицательная — уменьшить):",
+        "-500",
+      );
+      if (raw === null) return;
+      const rub = Number(String(raw).replace(",", "."));
+      if (!Number.isFinite(rub) || rub === 0) {
+        window.alert("Нужна ненулевая денежная дельта.");
+        return;
+      }
+      body.delta_cents = Math.round(rub * 100);
+      const note = window.prompt("Обоснование (в аудит):", dispute.reason || "");
+      if (note === null) return;
+      body.resolution = note;
+    } else {
+      const note = window.prompt("Причина отклонения (в аудит):", "");
+      if (note === null) return;
+      body.resolution = note;
+    }
+    setBusy(button, true, "…");
+    try {
+      await api(`/v1/disputes/${encodeURIComponent(dispute.dispute_id)}/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      await loadDisputes();
+      await loadFlags();
+      await loadSummary();
+      setError("");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  function renderDisputes() {
+    const rows = state.disputes;
+    const body = $("#disputes-rows");
+    body.replaceChildren(...rows.map((dispute) => {
+      const actions = [];
+      if (dispute.status === "open") {
+        const approve = el("button", { class: "primary", type: "button", text: "Одобрить" });
+        const reject = el("button", { class: "danger", type: "button", text: "Отклонить" });
+        approve.addEventListener("click", () => resolveDispute(dispute, "approved", approve));
+        reject.addEventListener("click", () => resolveDispute(dispute, "rejected", reject));
+        actions.push(approve, reject);
+      }
+      return el("tr", {},
+        el("td", { text: dispute.dispute_id }),
+        el("td", { text: String(dispute.day_id || "").split("|").pop() || "—" }),
+        el("td", { text: dispute.participant_id }),
+        el("td", { text: dispute.reason }),
+        el("td", { text: formatDateTime(dispute.window_deadline) }),        el("td", {}, statusBadge(dispute.status)),
+        el("td", {}, el("div", { class: "actions" }, ...actions)),
+      );
+    }));
+    $("#disputes-empty").hidden = rows.length > 0;
+  }
+
+  function renderSnapshots() {
+    const rows = state.snapshots;
+    const body = $("#snapshots-rows");
+    body.replaceChildren(...rows.map((snapshot) =>
+      el("tr", {},
+        el("td", { text: snapshot.month }),
+        el("td", { text: snapshot.snapshot_id }),
+        el("td", { text: String(snapshot.sha256 || "").slice(0, 16) + "…" }),
+        el("td", { text: snapshot.git_ref || "—" }),
+        el("td", { text: formatDateTime(snapshot.created_at) }),
+      )
+    ));
+    $("#snapshots-empty").hidden = rows.length > 0;
+  }
+
+  async function loadSummary() {
+    state.summary = await api(`/v1/status/summary?month=${encodeURIComponent(state.month)}`);
+    renderSummary();
+  }
+
+  async function loadFlags() {
+    const data = await api(`/v1/flags?month=${encodeURIComponent(state.month)}`);
+    state.flags = data.flags || [];
+    renderFlags();
+  }
+
+  async function loadDisputes() {
+    const status = state.disputeStatus;
+    const params = new URLSearchParams({ month: state.month });
+    if (status) params.set("status", status);
+    const data = await api(`/v1/disputes?${params.toString()}`);
+    state.disputes = data.disputes || [];
+    renderDisputes();
+  }
+
+  async function loadSnapshots() {
+    const data = await api("/v1/snapshots");
+    state.snapshots = data.snapshots || [];
+    renderSnapshots();
+  }
+
+  async function loadAll() {
+    if (!state.token && $("#login").hidden === false) return;
+    setError("");
+    $("#refresh").disabled = true;
+    try {
+      await Promise.all([loadSummary(), loadFlags(), loadDisputes(), loadSnapshots()]);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      $("#refresh").disabled = false;
+    }
+  }
+
+  function csvEscape(value, formulaSafe = true) {
+    let text = String(value ?? "");
+    if (formulaSafe && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+    return /[;"\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }
+
+  function download(filename, content, type) {
+    const parts = type.startsWith("text/csv") ? ["\ufeff", content] : [content];
+    const blob = new Blob(parts, { type });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
+
+  function exportSummary() {
+    const rows = (state.summary && state.summary.participants) || [];
+    const csv = [
+      "participant_id;paid_hours_month;amount_rub_month;adjustments_delta_rub;effective_amount_rub",
+      ...rows.map((row) => [
+        csvEscape(row.participant_id),
+        csvEscape(hoursValue(row.paid_hours_month).replace(",", "."), false),
+        csvEscape(rubValue(row.amount_rub_month).replace(/\s/g, "").replace(",", "."), false),
+        csvEscape((Number(row.adjustments_delta_cents || 0) / 100).toFixed(2), false),
+        csvEscape(rubValue(row.effective_amount_rub || row.amount_rub_month).replace(/\s/g, "").replace(",", "."), false),
+      ].join(";")),
+    ].join("\r\n");
+    download(`partner-summary-${state.month}.csv`, csv, "text/csv;charset=utf-8");
+  }
+
+  function exportFlags() {
+    const filter = state.flagFilter;
+    const rows = state.flags.filter((flag) => !filter || flag.code === filter);
+    const csv = [
+      "date;participant_id;code;detail;paid_hours;amount_rub;effective_amount_rub",
+      ...rows.map((flag) => [
+        csvEscape(flag.date),
+        csvEscape(flag.participant_id),
+        csvEscape(flag.code),
+        csvEscape(flag.detail || ""),
+        csvEscape(hours(flag.paid_seconds).replace(",", "."), false),
+        csvEscape(money(flag.amount_cents).replace(/\s/g, ""), false),
+        csvEscape(money(flag.effective_amount_cents).replace(/\s/g, ""), false),
+      ].join(";")),
+    ].join("\r\n");
+    download(`partner-flags-${state.month}.csv`, csv, "text/csv;charset=utf-8");
+  }
+
+  function exportJson() {
+    const payload = {
+      generated_at: new Date().toISOString(),
+      month: state.month,
+      project_id: state.project || null,
+      summary: state.summary,
+      flags: state.flags.filter((flag) => !state.flagFilter || flag.code === state.flagFilter),
+      disputes: state.disputes,
+      snapshots: state.snapshots,
+    };
+    download(
+      `partner-dashboard-${state.month}.json`,
+      JSON.stringify(payload, null, 2),
+      "application/json;charset=utf-8",
+    );
+  }
+
+  async function closeSnapshot(button) {
+    const actor = $("#snapshot-actor").value.trim() || directorName() || "director";
+    if (!state.month) {
+      setError("Выберите месяц.");
+      return;
+    }
+    if (!window.confirm(`Закрепить снапшот ${state.month}? Снапшот иммутабелен.`)) return;
+    setBusy(button, true, "Закрепляем…");
+    try {
+      const result = await api(`/v1/snapshots/${encodeURIComponent(state.month)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actor }),
+      });
+      setError("");
+      window.alert(
+        result.status === "duplicate"
+          ? `Снапшот уже закреплён: ${result.snapshot_id}`
+          : `Снапшот ${result.snapshot_id} создан; sha256 ${String(result.sha256).slice(0, 16)}…`,
+      );
+      await loadSnapshots();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  function bind() {
+    $("#month").value = state.month;
+    $("#project").value = state.project;
+
+    $("#login-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const token = $("#token").value.trim();
+      if (!token) return;
+      loginWithToken(token);
+    });
+    $("#demo").addEventListener("click", () => {
+      sessionStorage.removeItem("partner_token");
+      state.token = "";
+      showAppLoggedIn();
+      loadAll();
+    });
+    $("#logout").addEventListener("click", logout);
+    $("#refresh").addEventListener("click", loadAll);
+    $("#error-close").addEventListener("click", () => setError(""));
+
+    $("#month").addEventListener("change", () => {
+      state.month = $("#month").value || currentMonth();
+      updateUrlState();
+      loadAll();
+    });
+    $("#project").addEventListener("change", () => {
+      state.project = $("#project").value.trim();
+      updateUrlState();
+      loadAll();
+    });
+    $("#flag-filter").addEventListener("change", () => {
+      state.flagFilter = $("#flag-filter").value;
+      renderFlags();
+    });
+    $("#dispute-status").addEventListener("change", () => {
+      state.disputeStatus = $("#dispute-status").value;
+      loadDisputes().catch((err) => setError(errorMessage(err)));
+    });
+    $("#snapshot-close").addEventListener("click", (event) => closeSnapshot(event.currentTarget));
+    $("#export-summary").addEventListener("click", exportSummary);
+    $("#export-flags").addEventListener("click", exportFlags);
+    $("#export-json").addEventListener("click", exportJson);
+
+    updateUrlState();
+    if (state.token) {
+      showAppLoggedIn();
+      loadAll();
+    } else {
+      showLogin();
+    }
+  }
+
+  bind();
+})();
+</script>
+</body>
+</html>

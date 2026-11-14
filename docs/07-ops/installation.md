@@ -54,6 +54,10 @@ curl -fsS http://localhost:8080/v1/metrics  # метрики (§6)
 docker compose logs server | grep dayclose  # планировщик закрытия дня
 ```
 
+Кабинет директора: `http://localhost:8080/dashboard` (v1.3). Введите
+`PARTNER_API_TOKEN` или tenant-токен; при пустом токене сервер работает
+в демо-режиме и доступна кнопка «Демо без токена».
+
 Восстановление из бэкапа отрепетировать сразу после установки:
 `docker compose exec backup /srv/scripts/restore_check.sh` (runbook §5.1).
 

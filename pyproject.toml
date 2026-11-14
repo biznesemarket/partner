@@ -52,6 +52,7 @@ include = ["partner_cli*", "partner_server*", "partner_agent_kit*", "partner_con
 
 [tool.setuptools.package-data]
 partner_cli = ["policy.schema.json", "schema.sql"]
+partner_server = ["dashboard.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
