@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 
 from partner_server import models, ops
-from tests.conftest import BASE_DAY, moscow_local
+from conftest import BASE_DAY, moscow_local
 
 
 def _hb(client, session_id, seq, cls, start, end):

@@ -15,7 +15,7 @@ import hmac as hmac_mod
 
 from partner_server import models
 from partner_server.config import settings
-from tests.conftest import moscow_local
+from conftest import moscow_local
 
 
 def _payload(seq=0):

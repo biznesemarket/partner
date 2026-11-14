@@ -19,7 +19,7 @@ import pytest
 
 from partner_server import licensing, models
 from partner_server.config import settings
-from tests.conftest import moscow_local
+from conftest import moscow_local
 
 SECRET = "unit-test-delivery-secret"
 
