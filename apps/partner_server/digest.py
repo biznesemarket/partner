@@ -76,15 +76,31 @@ def day_digest(sess: Session, project: models.Project, participant_id: str, date
     ]
     disputed_intervals = sorted({i for d in disputes for i in d["interval_refs"]})
 
-    # Часы по классам: пересборка из БД (детерминированно) через golden-калькулятор
+    # Часы по классам: пересборка из БД (детерминированно) через golden-калькулятор.
+    # ADR-0021: после закрытия поздние события дают adjustment, а не перезапись.
+    # Сумма пересчета обязана совпадать с эффективной суммой; расхождение часов
+    # допустимо только при наличии компенсации.
     computed = service.compute_day(sess, project, participant_id, date_iso)
-    if computed["paid_seconds"] != rec.paid_seconds or computed["amount_cents"] != rec.amount_cents:
+    effective_cents = rec.amount_cents + delta_cents
+    # Сумма пересчета может совпадать либо с исходной записью (спор/ручная
+    # корректировка не меняет расчет), либо с эффективной суммой (поздние
+    # события уже компенсированы). Иначе — порча БД.
+    if computed["amount_cents"] not in (rec.amount_cents, effective_cents):
         raise DigestError(
             "day_mismatch",
-            "пересчет дня расходится с закрытой записью — проверьте целостность БД",
+            "пересчет дня расходится с закрытой записью и корректировками — проверьте целостность БД",
         )
+    auto_recompute = any(
+        a["approved_by"] == "system-late-events" for a in adjustments
+    )
+    if computed["paid_seconds"] != rec.paid_seconds and not auto_recompute:
+        raise DigestError(
+            "day_mismatch",
+            "пересчет часов расходится с закрытой записью без компенсации — проверьте целостность БД",
+        )
+    recomputed = computed["paid_seconds"] != rec.paid_seconds
 
-    amount_cents = rec.amount_cents + delta_cents
+    amount_cents = effective_cents
     return {
         "kind": "day_digest",
         "participant_id": participant_id,
@@ -94,6 +110,8 @@ def day_digest(sess: Session, project: models.Project, participant_id: str, date
         "hours_by_class": {cls: computed["breakdown"].get(cls, "0") for cls in calc.PAID_CLASSES},
         "paid_seconds": rec.paid_seconds,
         "paid_hours": str(Decimal(rec.paid_seconds) / calc.H),
+        "recomputed_paid_seconds": computed["paid_seconds"] if recomputed else None,
+        "recomputed_amount_cents": computed["amount_cents"] if recomputed else None,
         "amount_cents": rec.amount_cents,
         "amount_rub": str(Decimal(rec.amount_cents) / 100),
         "adjustments": adjustments,
@@ -130,6 +148,13 @@ def render_day_digest(d: dict) -> str:
     lines.append(f"Доля дня: {d['share_pct']} % ({d['share_bp']} бп)")
     if d["adjustments"]:
         lines.append(f"Корректировки: {d['adjustments_delta_cents'] / 100:+.2f} ₽ → итог {d['effective_amount_rub']} ₽")
+    if d.get("recomputed_paid_seconds") is not None:
+        lines.append(
+            "Поздние события: пересчет "
+            f"{Decimal(d['recomputed_paid_seconds']) / calc.H} ч / "
+            f"{Decimal(d['recomputed_amount_cents']) / 100} ₽; "
+            "закрытая запись не изменена, разница учтена корректировкой (ADR-0021)"
+        )
     if d["flags"]:
         lines.append(f"Флаги: {', '.join(d['flags'])}")
     if d["disputed_intervals"]:

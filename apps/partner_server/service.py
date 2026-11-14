@@ -480,17 +480,137 @@ def _payload_sha(participant_id: str, date_iso: str, computed: dict) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _recompute_adjustment_id(day_id: str, sha: str) -> str:
+    """Детерминированный id компенсации пересчета: идемпотентность (ADR-0021)."""
+    digest = hashlib.sha256(f"{day_id}|{sha}".encode("utf-8")).hexdigest()[:24]
+    return f"adj-recalc-{digest}"
+
+
+def _compensate_reclose(
+    sess: Session,
+    project: models.Project,
+    rec: models.DayRecord,
+    computed: dict,
+    sha: str,
+) -> dict:
+    """Пересчет закрытого дня: запись не меняется, разница — adjustment.
+
+    ADR-0021: принятое начисление неизменяемо. Если поздние события в грейсе
+    изменили расчет, создается компенсирующая запись на дельту (append-only);
+    повторный пересчет с тем же sha идемпотентен по детерминированному id.
+    """
+    adjustments = sess.scalars(
+        select(models.Adjustment).where(models.Adjustment.day_id == rec.day_id)
+    ).all()
+    adj_id = _recompute_adjustment_id(rec.day_id, sha)
+    existing = sess.get(models.Adjustment, adj_id)
+    if existing is not None:
+        result = get_day(sess, project, rec.participant_id, rec.date)
+        result.update(
+            {
+                "status": "duplicate_compensation",
+                "adjustment_id": adj_id,
+                "delta_cents": existing.delta_cents,
+                "recomputed_amount_cents": computed["amount_cents"],
+                "recomputed_paid_seconds": computed["paid_seconds"],
+                "recomputed_sha256": sha,
+            }
+        )
+        return result
+
+    effective_cents = rec.amount_cents + sum(a.delta_cents for a in adjustments)
+    if sha == rec.sha256_input and computed["amount_cents"] == effective_cents:
+        result = get_day(sess, project, rec.participant_id, rec.date)
+        result.update(
+            {
+                "status": "duplicate",
+                "sha256": rec.sha256_input,
+                "recomputed_sha256": sha,
+            }
+        )
+        return result
+
+    delta_cents = computed["amount_cents"] - effective_cents
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    sess.add(
+        models.Adjustment(
+            adjustment_id=adj_id,
+            day_id=rec.day_id,
+            delta_cents=delta_cents,
+            reason=(
+                "автоматическая компенсация пересчета закрытого дня: "
+                f"sha {rec.sha256_input[:12]}… → {sha[:12]}…, "
+                f"часы {rec.paid_seconds} → {computed['paid_seconds']}"
+            ),
+            approved_by="system-late-events",
+            created_at=now_iso,
+        )
+    )
+    # Флаги только добавляются: исходные доказательства не удаляются.
+    known_flags = {
+        f.code
+        for f in sess.scalars(
+            select(models.Flag).where(models.Flag.day_id == rec.day_id)
+        ).all()
+    }
+    for code in computed["flags"]:
+        if code not in known_flags:
+            sess.add(
+                models.Flag(
+                    day_id=rec.day_id,
+                    code=code,
+                    detail=computed["breakdown"].get("note"),
+                )
+            )
+    sess.commit()
+    audit_log.record(
+        sess,
+        actor="system-dayclose",
+        entity="day_records",
+        entity_id=rec.day_id,
+        action="day.reclose_compensated",
+        old_value={
+            "sha256": rec.sha256_input,
+            "paid_seconds": rec.paid_seconds,
+            "amount_cents": rec.amount_cents,
+            "effective_amount_cents": effective_cents,
+        },
+        new_value={
+            "sha256": sha,
+            "paid_seconds": computed["paid_seconds"],
+            "amount_cents": computed["amount_cents"],
+            "delta_cents": delta_cents,
+            "adjustment_id": adj_id,
+        },
+        meta={"reason": "late_events_or_recompute", "day_id": rec.day_id},
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
+    )
+    result = get_day(sess, project, rec.participant_id, rec.date)
+    result.update(
+        {
+            "status": "compensated",
+            "adjustment_id": adj_id,
+            "delta_cents": delta_cents,
+            "recomputed_amount_cents": computed["amount_cents"],
+            "recomputed_paid_seconds": computed["paid_seconds"],
+            "recomputed_sha256": sha,
+        }
+    )
+    return result
+
+
 def close_day(
     sess: Session,
     project: models.Project,
     participant_id: str,
     date_iso: str,
 ) -> dict:
-    """Закрытие дня (ADR-0017): пересчет и запись day_record closed=1.
+    """Закрытие дня (ADR-0017, ADR-0021): запись неизменяема после закрытия.
 
-    Повторное закрытие того же дня дает тот же результат (идемпотентно):
-    запись заменяется той же самой строкой; правки закрытого дня — только
-    через adjustments (M6).
+    Идемпотентный повтор с тем же расчетом возвращает duplicate. Если после
+    закрытия пришли события в грейсе и пересчет изменился — создается
+    компенсирующая запись (adjustment), а day_record не перезаписывается.
     """
     # M9.1: лицензия invalid/expired блокирует новые закрытия; чтение,
     # экспорт и снятие системы не блокируются («данные клиента — у клиента»).
@@ -512,6 +632,8 @@ def close_day(
             f"день {day_id} уже принадлежит проекту {rec.project_id!r}",
             status=409,
         )
+    if rec is not None and rec.closed:
+        return _compensate_reclose(sess, project, rec, computed, sha)
     if rec is None:
         rec = models.DayRecord(day_id=day_id)
         sess.add(rec)
