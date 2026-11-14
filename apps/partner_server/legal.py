@@ -16,10 +16,15 @@ M7.3 гейты G-01…G-08: включение legal.enabled: true возмож
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
+import tempfile
+import time
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -66,6 +71,73 @@ class LegalError(service.DomainError):
     """Ошибка юридического модуля — тот же контракт, что у сервисных ошибок."""
 
 
+@contextlib.contextmanager
+def _state_lock(path: pathlib.Path, *, timeout: float = 5.0) -> Iterator[None]:
+    """Межпроцессная блокировка read-modify-write для legal.yaml (T-04).
+
+    Блокируется отдельный `.lock`-файл, чтобы атомарная замена самого
+    legal.yaml не ломала удерживаемый дескриптор. Ожидание ограничено:
+    вместо зависания API получает `legal_state_busy` (409).
+    """
+    lock_path = path.with_name(path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+b")
+    try:
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as err:
+                if time.monotonic() >= deadline:
+                    raise LegalError(
+                        "legal_state_busy",
+                        f"{path.name} занят другим обновлением; повторите позже",
+                    ) from err
+                time.sleep(0.02)
+        try:
+            yield
+        finally:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+    finally:
+        handle.close()
+
+
+def _replace_with_retry(src: str, dst: pathlib.Path, *, timeout: float = 5.0) -> None:
+    """os.replace с коротким retry: на Windows читатель может держать файл."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.02)
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -83,9 +155,21 @@ def default_state() -> dict:
 
 def load_state(path: pathlib.Path) -> dict:
     """Чтение состояния; отсутствующий или битый файл = состояние по умолчанию."""
+    raw: str | None = None
+    for attempt in range(6):
+        try:
+            raw = path.read_text(encoding="utf-8")
+            break
+        except PermissionError:
+            # Windows: замена файла может кратко пересечься с чтением.
+            if attempt == 5:
+                return default_state()
+            time.sleep(0.01)
+        except OSError:
+            return default_state()
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
+        data = yaml.safe_load(raw)
+    except yaml.YAMLError:
         return default_state()
     if not isinstance(data, dict):
         return default_state()
@@ -104,11 +188,24 @@ def load_state(path: pathlib.Path) -> dict:
 
 
 def save_state(path: pathlib.Path, state: dict) -> None:
+    """Атомарная запись состояния: tmp-файл в том же каталоге + os.replace."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(state, allow_unicode=True, sort_keys=True),
-        encoding="utf-8",
+    payload = yaml.safe_dump(state, allow_unicode=True, sort_keys=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
     )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if path.exists():
+            os.chmod(tmp_name, path.stat().st_mode & 0o777)
+        _replace_with_retry(tmp_name, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
 
 
 def gate_report(state: dict) -> list[dict]:
@@ -153,14 +250,15 @@ def set_gate(
             "gate_evidence_required",
             "для снятия гейта нужно описание основания (≥5 символов): документ, дата, подписант",
         )
-    state = load_state(path)
-    state["gates"][gate_id] = {
-        "status": status,
-        "evidence": evidence,
-        "actor": actor,
-        "updated_at": _now_iso(),
-    }
-    save_state(path, state)
+    with _state_lock(path):
+        state = load_state(path)
+        state["gates"][gate_id] = {
+            "status": status,
+            "evidence": evidence,
+            "actor": actor,
+            "updated_at": _now_iso(),
+        }
+        save_state(path, state)
     return {"gate_id": gate_id, **state["gates"][gate_id], "subject": GATES[gate_id]["subject"]}
 
 
@@ -169,20 +267,21 @@ def enable(path: pathlib.Path) -> dict:
 
     Иначе LegalError legal_gates_not_cleared с перечнем незакрытых гейтов.
     """
-    state = load_state(path)
-    unclosed = unclosed_gates(state)
-    if state["legal"].get("enabled"):
-        return {"status": "duplicate", "enabled": True, "unclosed": unclosed}
-    if unclosed:
-        raise LegalError(
-            "legal_gates_not_cleared",
-            "юридический модуль включить нельзя: не сняты гейты " + ", ".join(unclosed)
-            + " — их снимает юрист до включения (legal-module.md §4)",
-        )
-    state["legal"]["enabled"] = True
-    state["legal"]["enabled_at"] = _now_iso()
-    state["legal"]["enabled_by"] = "lawyer"
-    save_state(path, state)
+    with _state_lock(path):
+        state = load_state(path)
+        unclosed = unclosed_gates(state)
+        if state["legal"].get("enabled"):
+            return {"status": "duplicate", "enabled": True, "unclosed": unclosed}
+        if unclosed:
+            raise LegalError(
+                "legal_gates_not_cleared",
+                "юридический модуль включить нельзя: не сняты гейты " + ", ".join(unclosed)
+                + " — их снимает юрист до включения (legal-module.md §4)",
+            )
+        state["legal"]["enabled"] = True
+        state["legal"]["enabled_at"] = _now_iso()
+        state["legal"]["enabled_by"] = "lawyer"
+        save_state(path, state)
     return {"status": "enabled", "enabled": True, "enabled_at": state["legal"]["enabled_at"], "unclosed": []}
 
 

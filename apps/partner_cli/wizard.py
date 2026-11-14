@@ -56,9 +56,9 @@ class WizardAnswers:
 
     @classmethod
     def demo(cls) -> "WizardAnswers":
-        """Демо-ответы tenant #1: 10 млн ₽ проект, 500 ₽/час."""
+        """Обезличенные демо-ответы: 10 млн ₽ проект, 500 ₽/час, без ФИО."""
         return cls(
-            tenant_name="ООО «ФОНИИ»",
+            tenant_name="ООО «Демо»",
             project_name="Партнер",
             currency="RUB",
             valuation_rub=10_000_000,
@@ -67,7 +67,7 @@ class WizardAnswers:
             daily_cap_hours=12,
             k_autonomous=0.2,
             pool_pct=30,
-            approved_by="Потапов А.С. (директор)",
+            approved_by="Директор (демо)",
         )
 
 

@@ -34,6 +34,8 @@ ledger/
 *.pem
 policy.local.yaml
 legal.yaml
+legal.yaml.lock
+.legal.yaml.*.tmp
 license-registry.json
 deploy/.env
 deploy/legal/
