@@ -23,3 +23,8 @@ updates:
     labels:
       - dependencies
       - ci
+    # Мажорные версии Actions требуют ручной проверки входов/Node runtime.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
