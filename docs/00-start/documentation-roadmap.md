@@ -2,10 +2,10 @@
 
 | Поле | Значение |
 |---|---|
-| Версия | 1.2 |
-| Дата | 2026-11-13 |
+| Версия | 1.3 |
+| Дата | 2026-11-14 |
 | Назначение | Дорожная карта создания документации и кода проекта «Партнер» |
-| Статус итераций | I0–I3 выполнены; I4 выполнена в M4; I5–I9 закрыты в M5–M9. Открытые хвосты — docs D4 (overview/connectors) и D6 (два гайда), см. docs-plan.md |
+| Статус итераций | I0–I9 выполнены; D4/D6 закрыты в v1.2 (#8), открытый хвост — только D7 (ревью юриста), см. docs-plan.md |
 
 ## 1. Принципы плана
 
@@ -87,7 +87,7 @@
 установку в чужой репозиторий без программиста; wizard генерирует валидную
 политику (проверяется `policy_lint.py`) и блок AGENTS.md.
 
-### I4 · Архитектура и данные — ВЫПОЛНЕНО В M4; документы overview/connectors — draft
+### I4 · Архитектура и данные — ВЫПОЛНЕНО В M4; C4/connectors закрыты в v1.2
 
 - `03-architecture/overview.md` → полный C4 L1–L3 (сервер, БД, agent-kit,
   коннекторы).
@@ -109,7 +109,7 @@
 **Критерий готовности:** для каждой атаки описан детект и мера;
 блокирующие для MVP требования перечислены и отмечены в backlog.
 
-### I6 · UX и уведомления (10–12 ч)
+### I6 · UX и уведомления — ВЫПОЛНЕНО (гайды — v1.2)
 
 - `08-guides/`: сценарий «утро разработчика» и «день директора» по шагам;
   тексты дайджеста; формат уведомлений (агент/почта/мессенджер).
@@ -163,8 +163,8 @@
 | I1 | docs/02-policy/time-accounting.md, tests/test_calc.py (T-01…T-12) |
 | I2 | docs/02-policy/policy-schema.md, equity-model.md, versioning.md, calculator-spec.md, policy.example.yaml, tools/policy_lint.py |
 | I3 | docs/03-architecture/onboarding-wizard.md, repo-pack/*, apps/partner_cli/* |
-| I4 | docs/03-architecture/data-model.md, apps/partner_server/*, migrations/*; overview/connectors — draft |
-| I5–I9 | реализованы в M5–M9: антифрод, дайджесты, юрмодуль, поставка, релиз (см. development-plan.md) |
+| I4 | docs/03-architecture/overview.md (C4 L1–L3), data-model.md, connectors.md, apps/partner_server/*, migrations/* |
+| I5–I9 | реализованы в M5–M9: антифрод, дайджесты (I6: morning-developer.md, director-day.md), юрмодуль, поставка, релиз (см. development-plan.md) |
 
 ## 5. Правила изменения плана
 

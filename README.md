@@ -199,10 +199,11 @@ VS Code), коннекторы GitHub/Forgejo/Gitea (вебхуки, `repo_facts
 tenant/RBAC с `PARTNER_TENANT_TOKENS` и `DayRecord.project_id` (#4),
 PostgreSQL и Docker в CI (#5), поставка `partner-tracker` с release-
 артефактами (#6), инвариант закрытого дня по ADR-0021 (#7).
-**170 тестов**, CI Linux + Windows + postgres-smoke + package-smoke.
+**171 тест**, CI Linux + Windows + postgres-smoke + package-smoke.
 Акт приемки v1.0.0 — docs/05-process/release-acceptance.md.
 
-**Что дальше.** P2: overview/гайды (#8), веб-дашборд директора (#10).
+**Что дальше.** P2: веб-дашборд директора (#10), ревью юриста по
+`legal-module.md` (D7), транспорт `agent_chat` (B-03) и RBAC-роли (T-06).
 Порядок и разрывы — в [docs/05-process/backlog.md](docs/05-process/backlog.md).
 
 ## Лицензия
