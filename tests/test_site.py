@@ -104,6 +104,10 @@ def test_c4_and_guides_have_key_contracts(site):
     assert "ADR-0021" in overview
     morning = (out / "docs__08-guides__morning-developer.html").read_text(encoding="utf-8")
     assert "3 300" in morning and "0,0330" in morning
+    # тексты дайджеста совпадают с render_day_digest (digest.py)
+    assert "человек (active_human)" in morning
+    assert "агент под наблюдением (supervised_agent)" in morning
+    assert "PARTNER_GRACE_HOURS" in morning
     director = (out / "docs__08-guides__director-day.html").read_text(encoding="utf-8")
     assert "snapshot" in director and "3 суток" in director
 
