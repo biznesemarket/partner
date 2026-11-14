@@ -37,3 +37,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${{ github.ref_name }}" dist/* --title "${{ github.ref_name }}" --generate-notes
+      - name: Манифест поставки (sha256 + API URL)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python tools/partner_dist.py manifest \
+            --dist dist --tag "${{ github.ref_name }}" --out dist-manifest.json
+          gh release upload "${{ github.ref_name }}" dist-manifest.json --clobber
