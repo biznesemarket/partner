@@ -332,7 +332,7 @@ def domain_error_status(code: str) -> int:
         return 404
     if code == "cross_tenant_denied":
         return 403
-    if code == "day_project_conflict":
+    if code in ("day_project_conflict", "legal_state_busy"):
         return 409
     return 422
 
