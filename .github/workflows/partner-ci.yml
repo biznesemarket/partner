@@ -99,7 +99,7 @@ jobs:
             -d '{"session_id":"s-smoke","participant_id":"dev1","project_id":"partner","task_ref":"T-SMOKE","branch":"dev/dev1/smoke","started_at_utc":"2026-11-12T00:00:00+00:00"}'
           curl -fsS -X POST http://127.0.0.1:8080/v1/heartbeats \
             -H "$AUTH" -H "Content-Type: application/json" \
-            -d '{"event_id":"smoke-1","session_id":"s-smoke","seq":0,"cls":"active_human","start_utc":"2026-11-12T07:00:00+00:00","end_utc":"2026-11-12T11:00:00+00:00","received_at_utc":"2026-11-12T11:00:01+00:00","signals":{"tool_calls":1}}'
+            -d '{"event_id":"smoke-1","session_id":"s-smoke","seq":0,"cls":"active_human","start_utc":"2026-11-12T07:00:00+00:00","end_utc":"2026-11-12T11:00:00+00:00","received_at_utc":"2026-11-12T11:00:01+00:00","signals":{"input_events":10,"focus":1,"tool_calls":1}}'
           curl -fsS -X POST "http://127.0.0.1:8080/v1/days/2026-11-12/close?participant_id=dev1" \
             -H "$AUTH" | python -c "import json,sys; d=json.load(sys.stdin); assert d['amount_cents']==200000, d; assert d['closed'] is True; print('close OK', d['day_id'])"
           curl -fsS "http://127.0.0.1:8080/v1/days/2026-11-12?participant_id=dev1" \
