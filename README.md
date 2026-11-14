@@ -174,6 +174,12 @@ docs/05-process/release-acceptance.md). Осталась организацио�
 DoD: пилотная установка у первого клиента.
 План — [docs/05-process/development-plan.md](docs/05-process/development-plan.md).
 
+**Что дальше.** В репозитории пока нет `partner-agent-kit` и
+`partner-connector-*`: серверная часть готова, но сквозной сбор времени
+из IDE и факты GitHub/Forgejo требуют реализации. Разрывы и порядок работ
+зафиксированы в [docs/05-process/backlog.md](docs/05-process/backlog.md)
+(v1.1: agent-kit и коннекторы).
+
 ## Лицензия
 
 Проприетарная, закрытая подписка. Все права защищены. См. [LICENSE](LICENSE).

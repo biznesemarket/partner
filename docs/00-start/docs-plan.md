@@ -230,12 +230,14 @@ docs-сайт — tools/build_docs_site.py, только approved, артефа�
 | docs/03-architecture/overview.md | разработчик | draft | 1.0 → C4 в D4 |
 | docs/03-architecture/data-model.md | разработчик | approved | 2.0 (M4 реализован) |
 | docs/03-architecture/connectors.md | разработчик | draft | 1.0 |
+| docs/03-architecture/agent-kit.md | разработчик | draft | 0.1 (контракт v1.1) |
 | docs/03-architecture/onboarding-wizard.md | директор | approved | 1.0 |
 | docs/03-architecture/adr/ADR-0001…0020 | команда | approved (0016–0019) | см. migration-map |
 | docs/03-architecture/adr/README.md | команда | approved | 2.1 (индекс + реестр) |
 | docs/04-security/threat-model.md | админ | approved | 2.0 (M5 реализован) |
 | docs/05-process/development-process.md | команда | approved | 1.0 |
 | docs/05-process/development-plan.md | команда | approved | 1.0 |
+| docs/05-process/backlog.md | команда | draft | 1.0 (план v1.1+) |
 | docs/06-legal/legal-module.md | юрист | draft | 1.1 (M7 реализован) |
 | docs/07-ops/installation.md | админ | approved | 1.1 (M8 реализован) |
 | docs/08-guides/digest-and-cli.md | директор | approved | 1.0 |
