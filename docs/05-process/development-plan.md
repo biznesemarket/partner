@@ -149,7 +149,8 @@ day_record, эффективная сумма = amount + Σ корректиро
 /v1/days/{date} и дайджесте), rejected, авто-истечение expired
 (`dispute_window_expired`). Миграция 0002_m6 (disputes, notifications).
 Тексты дайджеста рендерятся детерминированно (render_day_digest /
-render_month_digest) — формат к утверждению в D6 (документы 08-guides).
+render_month_digest); формат утвержден в D6 — `08-guides/morning-developer.md`
+и `08-guides/director-day.md` (v1.2).
 
 Тесты: tests/test_digest.py — 18 (всего в репо 66).
 

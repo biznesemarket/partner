@@ -26,7 +26,7 @@ MVP-бэклог, юридические шаблоны C1–C13) полност
 | D2-adr-index | docs/03-architecture/adr/README.md | Перенос + ревизия статусов |
 | D3/D4 интеграции GitHub/Forgejo | docs/03-architecture/connectors.md | Адаптация: + прием телеметрии |
 | D5-data-model | docs/03-architecture/data-model.md | Адаптация: + сессии, события, дни |
-| D6-api (OpenAPI) | docs/03-architecture/overview.md §5 (полная спецификация — I4) | Адаптация: + сессии, дни, политики |
+| D6-api (OpenAPI) | docs/03-architecture/overview.md §6 (автогенерация — `/docs`) | Адаптация: + сессии, дни, политики |
 | D7-threat-model | docs/04-security/threat-model.md | Адаптация: + накрутка времени, idle-фрод |
 | D8-migration-multiinstance | docs/03-architecture/data-model.md §5 | Адаптация: + мультитенантность |
 | D9-migration-postgres | docs/03-architecture/data-model.md §6 | Адаптация: БД — истина для событий |

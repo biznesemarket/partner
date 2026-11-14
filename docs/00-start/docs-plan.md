@@ -2,11 +2,11 @@
 
 | Поле | Значение |
 |---|---|
-| Версия | 1.0 |
-| Дата | 2026-11-13 |
+| Версия | 1.1 |
+| Дата | 2026-11-14 |
 | Назначение | Пошаговый план доведения документации «Партнера» до уровня продаж продукта |
 | Связанные | documentation-roadmap.md (сводная дорожная карта), development-plan.md (план разработки), migration-map.md |
-| Статус | D0–D3, D5, D8–D9 выполнены; D4 и D6 — частично; D7 — на юридическом ревью |
+| Статус | D0–D6, D8–D9 выполнены; D7 — на юридическом ревью |
 
 ## 1. Цель и стандарт качества
 
@@ -111,7 +111,7 @@ draft → self-check (§1) → review вторым читателем → approv
 **DoD (выполнен):** установка по документации проходима без программиста;
 wizard выдает политику, валидную линтером.
 
-### D4 · Архитектура и данные — ЧАСТИЧНО (M4, 2026-11-13)
+### D4 · Архитектура и данные — ВЫПОЛНЕНО (M4; C4 — v1.2)
 
 Шаги:
 
@@ -132,10 +132,12 @@ wizard выдает политику, валидную линтером.
    = имена в коде.
 
 Выполнено (M4): data-model.md 2.0 (ORM + Alembic, SQLite/PostgreSQL),
-сервер и миграции в коде. Выполнено в v1.1: connectors.md (протоколы
-GitHub/Forgejo, вебхуки, факты) и agent-kit.md (CLI/MCP). Остаются:
-overview.md (C4 L1–L3) и отдельная OpenAPI-выжимка — статус draft,
-вынесено в backlog #8.
+сервер и миграции в коде. Выполнено в v1.1: connectors.md и agent-kit.md.
+Выполнено в v1.2 (#8): overview.md 2.0 — полный C4 L1–L3 с текстовой
+расшифровкой диаграмм и фактическим API; connectors.md 1.2 — заголовки и
+подписи вебхуков, коды ошибок, backfill, сетевые сбои и лимиты. Отдельная
+OpenAPI-выжимка для клиента остается в backlog (D-05): актуальная
+спецификация автогенерируется FastAPI на `/docs`.
 
 **DoD:** разработчик начинает MVP сервера без дополнительных вопросов;
 все имена таблиц и эндпоинтов совпадают между data-model.md, OpenAPI и кодом.
@@ -152,7 +154,7 @@ overview.md (C4 L1–L3) и отдельная OpenAPI-выжимка — ста
 **DoD:** для каждой из атак описан детект и мера; блокирующие пункты
 совпадают со списком M5 в плане разработки.
 
-### D6 · UX и уведомления — ЧАСТИЧНО (M6; два гайда не созданы)
+### D6 · UX и уведомления — ВЫПОЛНЕНО (M6; гайды — v1.2)
 
 1. `08-guides/morning-developer.md`: сценарий «утро разработчика» по шагам —
    с реальными числами T-01 (6.6 ч → 3 300 ₽ → 0.0330%).
@@ -162,6 +164,11 @@ overview.md (C4 L1–L3) и отдельная OpenAPI-выжимка — ста
    цифрами, что ссылками на документы.
 4. Описать каналы доставки (агент, почта, мессенджер) и поведение при
    недоставке.
+
+Выполнено в v1.2 (#8): `08-guides/morning-developer.md` и
+`08-guides/director-day.md`. Тексты дайджеста утверждены фактическим
+рендером `digest.py` (день и месяц), числа T-01/E-01 воспроизводятся
+тестами; каналы и повтор описаны в `installation.md` и overview §5.6.
 
 **DoD:** тексты дайджеста утверждены; сценарии покрыты числами, которые
 воспроизводятся тестами.
@@ -217,7 +224,7 @@ docs-сайт — tools/build_docs_site.py, только approved, артефа�
 |---|---|---|---|
 | docs/00-start/documentation-roadmap.md | команда | approved | 1.1 |
 | docs/00-start/migration-map.md | команда | approved | 1.0 |
-| docs/00-start/quickstart.md | директор | approved | 1.0 |
+| docs/00-start/quickstart.md | директор | approved | 1.1 |
 | docs/00-start/docs-plan.md | команда | approved | 1.0 |
 | docs/01-product/vision.md | все | approved | 2.0 |
 | docs/01-product/glossary.md | все | approved | 1.0 |
@@ -228,9 +235,9 @@ docs-сайт — tools/build_docs_site.py, только approved, артефа�
 | docs/02-policy/calculator-spec.md | разработчик | approved | 1.0 |
 | docs/02-policy/policy.schema.json | код | approved | 1.0 |
 | docs/02-policy/policy.example.yaml | код | approved | 1.0 |
-| docs/03-architecture/overview.md | разработчик | draft | 1.0 → C4 в D4 |
+| docs/03-architecture/overview.md | разработчик | approved | 2.0 (C4 L1–L3, v1.2) |
 | docs/03-architecture/data-model.md | разработчик | approved | 2.2 (v1.2 tenant/RBAC) |
-| docs/03-architecture/connectors.md | разработчик | approved | 1.1 (реализовано v1.1) |
+| docs/03-architecture/connectors.md | разработчик | approved | 1.2 (протоколы v1.2) |
 | docs/03-architecture/agent-kit.md | разработчик | approved | 1.0 (реализовано v1.1) |
 | docs/03-architecture/onboarding-wizard.md | директор | approved | 1.0 |
 | docs/03-architecture/adr/ADR-0001…0020 | команда | approved (0016–0019) | см. migration-map |
@@ -242,8 +249,8 @@ docs-сайт — tools/build_docs_site.py, только approved, артефа�
 | docs/06-legal/legal-module.md | юрист | draft | 1.1 (M7 реализован) |
 | docs/07-ops/installation.md | админ | approved | 1.1 (M8 реализован) |
 | docs/08-guides/digest-and-cli.md | директор | approved | 1.0 |
-| docs/08-guides/morning-developer.md | разработчик | не создан | backlog D6 |
-| docs/08-guides/director-day.md | директор | не создан | backlog D6 |
+| docs/08-guides/morning-developer.md | разработчик | approved | 1.0 (D6, #8) |
+| docs/08-guides/director-day.md | директор | approved | 1.0 (D6, #8) |
 | docs/07-ops/backup-restore.md | админ | — | вошел в installation.md §5 + ADR-0020 (M8.3) |
 | docs/07-ops/upgrades.md | админ | — | вошел в installation.md §4 (M8.2) |
 | docs/07-ops/runbook.md | админ | approved | 1.0 (создан в M8.5) |
@@ -257,16 +264,16 @@ docs-сайт — tools/build_docs_site.py, только approved, артефа�
 | Итерация | Оценка | Зависимости |
 |---|---|---|
 | D0–D3 (выполнены) | ~52 ч | — |
-| D4 архитектура: хвосты overview/connectors | 6–10 ч | — |
+| D4 архитектура: overview/connectors | 0 (закрыто #8) | — |
 | D5 безопасность (выполнена в M5) | 0 | — |
-| D6 UX: два гайда и утверждение текстов | 6–8 ч | — |
+| D6 UX: два гайда и утверждение текстов | 0 (закрыто #8) | — |
 | D7 юридический (ревью юристом) | 4–6 ч | D2 |
 | D8 эксплуатация (выполнена в M8) | 0 | — |
 | D9 витрина (выполнена в M9) | 0 | — |
-| **Остаток** | **~16–24 ч** | |
+| **Остаток** | **~4–6 ч** | |
 
-D4 и D6 можно вести параллельно; D7 ждет ревью юриста. После закрытия
-остатка план документации соответствует коду v1.2.0.
+D4 и D6 закрыты в v1.2 (#8); D7 ждет ревью юриста. После закрытия D7
+план документации соответствует коду v1.2.0.
 
 ## 7. Правила изменения плана
 

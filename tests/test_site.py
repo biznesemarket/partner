@@ -2,10 +2,11 @@
 
 Сценарии:
 - S-01  сайт собирается: index.html + страницы; approved-документы опубликованы
-- S-02  draft-документы НЕ публикуются (overview, legal-module);
-        connectors/agent-kit опубликованы после реализации v1.1
+- S-02  draft-документы НЕ публикуются (legal-module); overview и гайды D6
+        опубликованы после v1.2
 - S-03  страницы — валидный HTML без утечки сырого markdown таблиц
 - S-04  resolve_status: собственный статус с токеном выигрывает у реестра
+- S-05  C4 overview и гайды D6 содержат ключевые контракты и числа
 """
 from __future__ import annotations
 
@@ -50,14 +51,16 @@ def test_site_builds_with_index_and_pages(site):
 def test_draft_docs_not_published(site):
     out, _, _ = site
     names = [p.name for p in out.glob("*.html")]
-    assert not any("overview" in nm for nm in names)
     assert not any("legal-module" in nm for nm in names)
-    # approved есть, включая контракты v1.1
+    # approved есть, включая C4 overview и контракты v1.1/v1.2
+    assert "docs__03-architecture__overview.html" in names
+    assert "docs__03-architecture__connectors.html" in names
+    assert "docs__03-architecture__agent-kit.html" in names
+    assert "docs__08-guides__morning-developer.html" in names
+    assert "docs__08-guides__director-day.html" in names
     assert "docs__07-ops__installation.html" in names
     assert "docs__07-ops__runbook.html" in names
     assert "docs__02-policy__time-accounting.html" in names
-    assert "docs__03-architecture__connectors.html" in names
-    assert "docs__03-architecture__agent-kit.html" in names
 
 
 # --- S-03 ----------------------------------------------------------------
@@ -86,6 +89,23 @@ def test_resolve_status_prefers_own_token():
 def test_registry_parses_docs_plan():
     registry = parse_registry(REPO)
     assert registry.get("docs/07-ops/installation.md") == "approved"
+    assert registry.get("docs/03-architecture/overview.md") == "approved"
+    assert registry.get("docs/08-guides/morning-developer.md") == "approved"
+    assert registry.get("docs/08-guides/director-day.md") == "approved"
+
+
+# --- S-05 ----------------------------------------------------------------
+
+def test_c4_and_guides_have_key_contracts(site):
+    out, _, _ = site
+    overview = (out / "docs__03-architecture__overview.html").read_text(encoding="utf-8")
+    assert "C4 L1" in overview and "C4 L2" in overview and "C4 L3" in overview
+    assert "service.ingest_heartbeat" in overview
+    assert "ADR-0021" in overview
+    morning = (out / "docs__08-guides__morning-developer.html").read_text(encoding="utf-8")
+    assert "3 300" in morning and "0,0330" in morning
+    director = (out / "docs__08-guides__director-day.html").read_text(encoding="utf-8")
+    assert "snapshot" in director and "3 суток" in director
 
 
 def test_is_approved_markers():
