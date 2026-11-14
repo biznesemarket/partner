@@ -10,14 +10,14 @@ import contextlib
 import logging
 import pathlib
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 
-from . import dayclose
+from . import __version__, dayclose, service
 from .config import settings
 from .connector_routes import router as connector_router
 from .db import make_engine, make_sessionmaker
-from .routes import router
+from .routes import domain_error_status, router
 
 
 @contextlib.asynccontextmanager
@@ -71,7 +71,7 @@ def _today_local(tz_name: str) -> str:
 
 app = FastAPI(
     title="Партнер — сервер учета времени",
-    version="1.2.0",
+    version=__version__,
     description=(
         "M4: прием heartbeat (идемпотентно), сборка и закрытие дня (00:00 MSK), "
         "объяснение начисления, месячные сводки. M5: антифрод-детекты "
@@ -85,12 +85,27 @@ app = FastAPI(
     ),
     lifespan=lifespan,
 )
+def _domain_error_body(exc: service.DomainError) -> dict:
+    """Единый формат структурированной ошибки: как у HTTPException(detail={...})."""
+    return {"detail": {"code": exc.code, "detail": exc.message}}
+
+
+@app.exception_handler(service.DomainError)
+async def _domain_error_handler(request: Request, exc: service.DomainError):
+    """Fail closed: любой необработанный DomainError — 4xx, а не 500."""
+    return JSONResponse(
+        status_code=exc.status or domain_error_status(exc.code),
+        content=_domain_error_body(exc),
+    )
+
+
 app.include_router(router)
 app.include_router(connector_router)
 
 
 @app.get("/")
 def root():
+    """Служебный ответ: имя сервиса, версия и ссылка на интерактивный OpenAPI."""
     return {"service": "partner-server", "version": app.version, "docs": "/docs"}
 
 

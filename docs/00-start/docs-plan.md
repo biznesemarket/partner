@@ -135,9 +135,10 @@ wizard выдает политику, валидную линтером.
 сервер и миграции в коде. Выполнено в v1.1: connectors.md и agent-kit.md.
 Выполнено в v1.2 (#8): overview.md 2.0 — полный C4 L1–L3 с текстовой
 расшифровкой диаграмм и фактическим API; connectors.md 1.2 — заголовки и
-подписи вебхуков, коды ошибок, backfill, сетевые сбои и лимиты. Отдельная
-OpenAPI-выжимка для клиента остается в backlog (D-05): актуальная
-спецификация автогенерируется FastAPI на `/docs`.
+подписи вебхуков, коды ошибок, backfill, сетевые сбои и лимиты. D-05
+закрыт: `docs/03-architecture/api-reference.md` генерируется из
+`app.openapi()` (`tools/openapi_digest.py`) и проверяется тестом
+`tests/test_openapi_digest.py`; полная спецификация — FastAPI `/docs`.
 
 **DoD:** разработчик начинает MVP сервера без дополнительных вопросов;
 все имена таблиц и эндпоинтов совпадают между data-model.md, OpenAPI и кодом.
@@ -237,6 +238,7 @@ docs-сайт — tools/build_docs_site.py, только approved, артефа�
 | docs/02-policy/policy.example.yaml | код | approved | 1.0 |
 | docs/03-architecture/overview.md | разработчик | approved | 2.0 (C4 L1–L3, v1.2) |
 | docs/03-architecture/data-model.md | разработчик | approved | 2.2 (v1.2 tenant/RBAC) |
+| docs/03-architecture/api-reference.md | разработчик | approved | 1.0 (D-05, генерируется из OpenAPI) |
 | docs/03-architecture/connectors.md | разработчик | approved | 1.2 (протоколы v1.2) |
 | docs/03-architecture/agent-kit.md | разработчик | approved | 1.0 (реализовано v1.1) |
 | docs/03-architecture/onboarding-wizard.md | директор | approved | 1.0 |

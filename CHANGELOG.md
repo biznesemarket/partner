@@ -2,6 +2,36 @@
 
 Формат — Keep a Changelog, версии — SemVer.
 
+## [Unreleased]
+
+### Публичный репозиторий и безопасность (2026-11-14)
+
+- Репозиторий переведен в публичный; `main` защищен: PR + 5 проверок
+  (`test` ubuntu/windows, `postgres-smoke`, `docker-build`,
+  `package-smoke`), обязательное разрешение обсуждений, запрет
+  force-push и удаления, правила действуют и для администраторов.
+- Включены secret scanning + push protection, Dependabot alerts/security
+  updates, private vulnerability reporting и CodeQL default setup
+  (Python). Секретов в истории не найдено.
+- Поставка wheel: публичный browser URL релиза + sha256, PAT не нужен;
+  `PARTNER_TRACKER_TOKEN` остается только для приватного зеркала.
+  Обновлены `tools/partner_dist.py`, repo-pack workflow и документация.
+  Публичный PyPI по-прежнему запрещен (fail closed).
+- CI: `package-smoke` проверяет собранный в PR wheel; реальный
+  опубликованный asset и sha256 проверяются в release-workflow после
+  публикации, поэтому внешний release больше не блокирует PR.
+
+### Техдолг и документация
+
+- T-05: `manual_only_policy: bill` возвращает 422
+  `manual_only_policy_not_supported` вместо `NotImplementedError`/500;
+  тесты калькулятора и API.
+- D-05: `docs/03-architecture/api-reference.md` генерируется из
+  `app.openapi()` (`tools/openapi_digest.py`) и проверяется тестом
+  синхронности.
+- Версии `partner_server`, `partner_agent_kit`, `partner_connectors` и
+  FastAPI-приложения выровнены на 1.3.0 (ранее расходились с wheel).
+
 ## [1.3.0] — 2026-11-14
 
 Дашборд директора, приватная поставка wheel, agent_chat, RBAC-роли и

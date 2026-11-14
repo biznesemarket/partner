@@ -133,6 +133,14 @@ def _apply_caps(
     return paid
 
 
+class CalcError(Exception):
+    """Нормативно-недопустимая конфигурация расчета (T-05)."""
+
+    def __init__(self, code: str, message: str):
+        self.code, self.message = code, message
+        super().__init__(f"{code}: {message}")
+
+
 def calc_day(
     intervals: list[Interval],
     pol: Policy = Policy(),
@@ -155,8 +163,10 @@ def calc_day(
     if not agent_attached and pol.manual_only_policy == "ignore":
         return DayResult(Decimal(0), 0, Decimal(0), flags=["manual_ignored"], breakdown={})
     if not agent_attached and pol.manual_only_policy == "bill":
-        raise NotImplementedError(
-            "Режим bill ручной работы требует решения директора (ADR) и не входит в скелет"
+        raise CalcError(
+            "manual_only_policy_not_supported",
+            "Режим manual_only_policy=bill не реализован: требуется ADR; "
+            "используйте track_only или ignore",
         )
 
     merged = union_intervals(intervals)

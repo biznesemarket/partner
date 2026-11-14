@@ -14,6 +14,7 @@ import sys
 import pathlib
 
 from conftest import moscow_local  # helper из conftest (pytest добавляет tests/ в path)
+from partner_server import models
 
 DATE = "2026-11-12"
 DATE_NEXT = "2026-11-13"
@@ -203,6 +204,54 @@ def test_no_task_link_not_paid(client):
     day = client.get("/v1/days/2026-11-12", params={"participant_id": "dev1"}).json()
     assert day["amount_cents"] == 0
     assert "no_task_link" in day["flags"]
+
+
+def test_manual_bill_policy_is_rejected_with_422(client, factory):
+    """T-05: manual_only_policy=bill без агента — 422, а не 500."""
+    with factory() as s:
+        policy = s.get(models.Policy, "p1")
+        policy.params_json = {**policy.params_json, "manual_only_policy": "bill"}
+        s.commit()
+
+    client.post(
+        "/v1/sessions",
+        json={
+            "session_id": "s-manual", "participant_id": "dev1", "project_id": "partner",
+            "task_ref": "T-1", "agent_attached": False,
+            "started_at_utc": moscow_local(0),
+        },
+    )
+    client.post(
+        "/v1/heartbeats",
+        json={
+            "event_id": "mb1", "session_id": "s-manual", "seq": 0,
+            "cls": "active_human",
+            "start_utc": moscow_local(10), "end_utc": moscow_local(14),
+            "received_at_utc": moscow_local(14),
+        },
+    )
+
+    for method, path in (
+        ("get", "/v1/days/2026-11-12"),
+        ("get", "/v1/days/2026-11-12/explain"),
+        ("post", "/v1/days/2026-11-12/close"),
+    ):
+        response = getattr(client, method)(path, params={"participant_id": "dev1"})
+        assert response.status_code == 422, response.text
+        assert response.json()["detail"]["code"] == "manual_only_policy_not_supported"
+
+
+def test_domain_error_handler_uses_structured_envelope():
+    """Глобальный обработчик DomainError отдает тот же envelope, что и routes."""
+    from partner_server import service
+    from partner_server.main import _domain_error_body
+
+    body = _domain_error_body(
+        service.DomainError("manual_only_policy_not_supported", "x")
+    )
+    assert body == {
+        "detail": {"code": "manual_only_policy_not_supported", "detail": "x"}
+    }
 
 
 def test_status_month_aggregates(client):

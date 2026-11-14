@@ -425,7 +425,13 @@ def compute_day(
     rv = rate_version_for(sess, pol.policy_id, date_iso)
     rate_slots = [(0, rv.value_cents // 100)] if rv else [(0, calc_pol.rate_rub_per_hour)]
 
-    result = calc.calc_day(raw, calc_pol, rate_slots=rate_slots, agent_attached=agent_attached)
+    try:
+        result = calc.calc_day(
+            raw, calc_pol, rate_slots=rate_slots, agent_attached=agent_attached
+        )
+    except calc.CalcError as err:
+        # T-05: недопустимая политика — управляемая ошибка домена, не 500.
+        raise DomainError(err.code, err.message) from err
     flags = flags + _no_output_flag(
         sess, project, participant_id, date_iso, pieces, result.paid_hours
     )

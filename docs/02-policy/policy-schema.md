@@ -86,6 +86,10 @@ daily_cap_hours:
 | manual_only_policy | enum | track_only | track_only \| bill \| ignore |
 | require_task_link | bool | true | Сессия без задачи не оплачивается |
 
+`bill` зарезервирован и пока не реализован: расчет дня без агента с этим
+режимом возвращает 422 `manual_only_policy_not_supported` (T-05); рабочие
+варианты — `track_only` (учет без оплаты) и `ignore` (не учитывать).
+
 ## 6. Блок day
 
 | Поле | Тип | Дефолт | Описание |

@@ -97,22 +97,57 @@ create_issue "[P2] Веб-дашборд директора" \
   "p2" "v1.3 — витрина" \
   "Вне MVP: сводка, флаги, споры, снапшоты, экспорт. Требования — после v1.1 (backlog v1.3)."
 
-echo "-- защита main (требует прав admin; на приватном репозитории может требовать GitHub Pro)"
+echo "-- защита main (публичный репозиторий: доступна на Free)"
 PROTECTION_JSON="$(mktemp)"
 cat > "$PROTECTION_JSON" <<'JSON'
 {
-  "required_status_checks": {"strict": true, "contexts": ["test (ubuntu-latest)", "test (windows-latest)"]},
-  "enforce_admins": false,
-  "required_pull_request_reviews": {"dismiss_stale_reviews": true, "required_approving_review_count": 1},
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["test (ubuntu-latest)", "test (windows-latest)", "postgres-smoke", "docker-build", "package-smoke"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {"dismiss_stale_reviews": true, "required_approving_review_count": 0},
   "restrictions": null,
-  "required_conversation_resolution": true
+  "required_conversation_resolution": true,
+  "allow_force_pushes": false,
+  "allow_deletions": false
 }
 JSON
 if gh api -X PUT "repos/$REPO/branches/main/protection" --input "$PROTECTION_JSON" >/dev/null; then
-  echo "   main защищен: PR + 1 ревью + CI (ubuntu/windows)"
+  echo "   main защищен: PR + 5 checks (test ubuntu/windows, postgres, docker, package), без force-push"
 else
-  echo "ПРЕДУПРЕЖДЕНИЕ: защита main не включена (план/права GitHub); настройте в Settings → Branches"
+  echo "ПРЕДУПРЕЖДЕНИЕ: защита main не включена (права GitHub); настройте в Settings → Branches"
 fi
 rm -f "$PROTECTION_JSON"
+
+echo "-- безопасность публичного репозитория"
+SECURITY_JSON="$(mktemp)"
+cat > "$SECURITY_JSON" <<'JSON'
+{
+  "security_and_analysis": {
+    "secret_scanning": {"status": "enabled"},
+    "secret_scanning_push_protection": {"status": "enabled"},
+    "dependabot_security_updates": {"status": "enabled"}
+  }
+}
+JSON
+gh api -X PATCH "repos/$REPO" --input "$SECURITY_JSON" >/dev/null \
+  || echo "   ПРЕДУПРЕЖДЕНИЕ: secret scanning/dependabot не включились"
+rm -f "$SECURITY_JSON"
+gh api -X PUT "repos/$REPO/vulnerability-alerts" >/dev/null 2>&1 \
+  || echo "   ПРЕДУПРЕЖДЕНИЕ: Dependabot alerts не включились"
+gh api -X PUT "repos/$REPO/private-vulnerability-reporting" >/dev/null 2>&1 \
+  || echo "   ПРЕДУПРЕЖДЕНИЕ: private vulnerability reporting не включился"
+
+CODEQL_JSON="$(mktemp)"
+cat > "$CODEQL_JSON" <<'JSON'
+{"state": "configured", "query_suite": "default", "languages": ["python"]}
+JSON
+if gh api -X PATCH "repos/$REPO/code-scanning/default-setup" --input "$CODEQL_JSON" >/dev/null; then
+  echo "   CodeQL default setup: Python"
+else
+  echo "   ПРЕДУПРЕЖДЕНИЕ: CodeQL default setup не включился (план/права)"
+fi
+rm -f "$CODEQL_JSON"
 
 echo "== готово =="

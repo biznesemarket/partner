@@ -77,18 +77,19 @@ Participant-токен видит только свои данные и не о�
    ```bash
    pip install --index-url https://<user>:<token>@pypi.example/partner/simple partner-tracker
    ```
-2. **Wheel-артефакт GitHub Release** (приватный репозиторий вендора).
-   Прямая ссылка `releases/download/...` для приватного репозитория не
-   работает: скачивайте asset через API с токеном. Команда ниже — из
-   checkout репозитория вендора; клиенту вендор передает готовые API URL
-   и `sha256` из `dist-manifest.json`.
+2. **Wheel-артефакт публичного GitHub Release**
+   (https://github.com/biznesemarket/partner). Прямая ссылка
+   `releases/download/...` работает без токена; в релизе лежит
+   `dist-manifest.json` с `sha256` каждого артефакта.
    ```bash
-   export GH_TOKEN=<fine-grained PAT: Contents: Read-only>
-   python tools/partner_dist.py resolve --version latest --download dist-release
-   pip install dist-release/partner_tracker-*.whl
+   curl -fLO https://github.com/biznesemarket/partner/releases/download/v1.3.0/partner_tracker-1.3.0-py3-none-any.whl
+   echo "<sha256>  partner_tracker-1.3.0-py3-none-any.whl" | sha256sum -c -
+   pip install partner_tracker-1.3.0-py3-none-any.whl
    ```
-   В релизе лежит `dist-manifest.json` с `sha256` и API URL каждого
-   артефакта; `resolve` сверяет хеш при скачивании.
+   Из checkout репозитория вендора: `python tools/partner_dist.py resolve
+   --version latest --download dist-release` (токен не нужен). Для
+   приватного зеркала с API URL asset задайте `--token`/`GH_TOKEN`
+   (fine-grained PAT, Contents: Read-only).
 3. **Локальная разработка продукта**: `pip install -e ".[dev,server]"`.
 
 ```bash
@@ -100,15 +101,16 @@ CI клиента (`repo-pack/workflows/partner-policy-check.yml`) берет п
 
 | Секрет | Значение |
 |---|---|
-| `PARTNER_TRACKER_WHEEL` | API URL asset: `https://api.github.com/repos/biznesemarket/partner/releases/assets/<id>` |
-| `PARTNER_TRACKER_TOKEN` | fine-grained PAT, Contents: Read-only на `biznesemarket/partner` |
+| `PARTNER_TRACKER_WHEEL` | публичный browser URL wheel из release (или API URL приватного зеркала) |
+| `PARTNER_TRACKER_TOKEN` | только для приватного API URL/зеркала: fine-grained PAT, Contents: Read-only |
 | `PARTNER_TRACKER_SHA256` | sha256 wheel из `dist-manifest.json` (проверка целостности) |
 | `PARTNER_TRACKER_INDEX_URL` | альтернатива wheel: приватный индекс с credentials в URL |
 
 Команды настройки клиентского репозитория печатает
 `python tools/partner_dist.py resolve --version latest --target-repo <owner/repo>`.
-Токен задается отдельно (`gh secret set PARTNER_TRACKER_TOKEN --repo <owner/repo>`)
-и не должен быть широким PAT владельца вендора.
+Без токена печатаются browser URL и `PARTNER_TRACKER_SHA256` (токен не
+требуется); с `--token` — API URL и команда `PARTNER_TRACKER_TOKEN` для
+приватного зеркала. Токен не должен быть широким PAT владельца вендора.
 
 Прототип может работать без сервера: CLI держит SQLite в `./data/partner.sqlite3`
 (схема `apps/partner_cli/schema.sql`), это режим демо и оценки.
