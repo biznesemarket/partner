@@ -2,9 +2,10 @@
 
 | Поле | Значение |
 |---|---|
-| Версия | 1.0 |
-| Дата | 2026-11-13 |
+| Версия | 1.1 |
+| Дата | 2026-11-14 |
 | Адаптирует | D3-integration-github, D4-integration-forgejo, ADR-0006 (прежняя версия) |
+| Статус | approved — реализовано в v1.1 (вебхуки, факты, привязка сессий) |
 | Связанные | overview §6, data-model, ADR-0016 |
 
 ## 1. Назначение и жесткая граница
@@ -47,14 +48,67 @@
 - Токены — минимальные скоупы (наследие ADR-0007), ротация по регламенту.
 - Проверка платежеспособности лимитов и очередей — мониторинг I8.
 
-## 6. Приемочные проверки перед реализацией (⚠VERIFY)
+## 6. Реализация v1.1
 
-- [ ] Типы вебхуков и подпись на целевом инстансе клиента.
-- [ ] Лимиты API для размеров клиентских команд.
-- [ ] Права токена: только чтение метаданных и задач.
+### 6.1 Прием вебхуков
+
+| Платформа | URL | Подпись |
+|---|---|---|
+| GitHub | `POST /v1/connectors/github/webhook` | `X-Hub-Signature-256: sha256=<hex>` |
+| Forgejo | `POST /v1/connectors/forgejo/webhook` | `X-Forgejo-Signature: <hex>` |
+| Gitea | `POST /v1/connectors/gitea/webhook` | `X-Gitea-Signature: <hex>` |
+
+- События: `push`, `pull_request`, `issues`. Неподдерживаемые типы
+  принимаются и журналируются без фактов.
+- Идемпотентность: `X-*-Delivery` — PK `connector_events`; повтор доставки
+  → `{"status": "duplicate"}`.
+- Секрет: `PARTNER_CONNECTOR_SECRET` (один на установку) или
+  `PARTNER_CONNECTOR_SECRETS='{"project":"secret"}'` (на проект).
+  Пустой секрет → 503 `connector_not_configured`; отсутствие подписи →
+  401; неверная подпись → 403 + инцидент `webhook_signature_invalid`.
+- Привязка проекта: `projects.repo` (`owner/name`) + `projects.forge`.
+  Неизвестный repo → 404 `repo_not_mapped`; неоднозначность → 409.
+
+### 6.2 Факты (`repo_facts`)
+
+| Событие | Факты |
+|---|---|
+| push | `push` (число коммитов), `commit` на каждый sha, `branch_created/deleted` |
+| pull_request | `pull_request` (additions/deletions/changed_files), `acceptance_draft` при merge |
+| issues | `issue`; `task` для метки `paid-task`; `acceptance` для `accepted`; `dispute_link` для `dispute` |
+
+Факты содержат только метаданные: sha, номера, ветки, метки, счетчики.
+Сообщения коммитов, тела PR/issues и диффы не сохраняются.
+
+- `GET /v1/connectors/facts?project_id=…&kind=…&branch=…&task_ref=…`
+- `GET /v1/connectors/events?project_id=…`
+- `POST /v1/connectors/{forge}/import` — backfill из API платформы
+  (`partner-connector sync-repo`).
+
+### 6.3 Привязка сессий
+
+Соглашение `dev/<логин>/<тема>` (development-process.md §1): тема ветки —
+это `task_ref`. Коннектор заполняет **пустой** `task_ref` сессии с той же
+веткой (`project_id` + `branch`) и **пустую** ветку у сессии с тем же
+`task_ref`. Явно заданные значения не перезаписываются.
+
+### 6.4 no_output
+
+`no_output` ставится, если за день оплачено > 3 ч, а результата нет:
+нет коммитов/PR с диффами, привязанных к ветке/задаче сессий участника,
+и сумма `signals.tool_calls` равна нулю. Флаг не меняет начисление.
+
+## 7. Приемочные проверки перед пилотом (⚠VERIFY)
+
+- [x] Типы вебхуков и подпись на целевом инстансе клиента — контракт
+  покрыт тестами `tests/test_connectors.py`.
+- [ ] Лимиты API для размеров клиентских команд — проверить на инстансе.
+- [x] Права токена: только чтение метаданных и задач (`partner-connector`
+  использует GET branches/pulls/issues).
 
 ## История изменений
 
 | Версия | Дата | Изменение |
 |---|---|---|
 | 1.0 | 2026-11-13 | Адаптация D3/D4: телеметрия из agent-kit, контракт фактов |
+| 1.1 | 2026-11-14 | Реализация v1.1: вебхуки, факты, привязка сессий, no_output |

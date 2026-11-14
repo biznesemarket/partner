@@ -15,17 +15,20 @@
   дайджесты, снапшоты, юридический модуль, лицензирование, метрики.
 - CLI: `init`, `status`, `day`, `explain`, `snapshot`, `policy set`,
   `dispute`, `digest`, `legal-*`, `export-legal`.
-- Калькулятор дня с golden-сценариями T-01…T-12; 131 тест; CI Linux + Windows.
+- v1.1: `partner-agent` (сессии, heartbeat 30 с, офлайн-буфер, подпись),
+  MCP stdio, VS Code-обертка; `partner-connector` и вебхуки GitHub/Forgejo
+  с фактами `repo_facts`; флаг `no_output`.
+- Калькулятор дня с golden-сценариями T-01…T-12; 156 тестов; CI Linux + Windows.
 - Поставка Docker Compose, бэкапы, runbook, docs-сайт, акт приемки.
 
 ## 2. Разрывы, блокирующие сквозной продукт
 
 | # | Разрыв | Влияние | Приоритет |
 |---|---|---|---|
-| B-01 | Нет `partner-agent-kit` (IDE-плагин + MCP-сервер): сессии и heartbeat умеет отправлять только HTTP-клиент | время не собирается «из коробки»; догфудинг и пилот требуют ручных интеграций | P0 |
-| B-02 | Нет `partner-connector-*` (GitHub/Forgejo/Gitea): ветки, PR, задачи, вебхуки | нет привязки сессий к задаче/ветке из платформы, нет фактов коммитов/PR | P0 |
+| B-01 | ~~Нет `partner-agent-kit` (IDE-плагин + MCP-сервер): сессии и heartbeat умеет отправлять только HTTP-клиент~~ | закрыто в v1.1: CLI/daemon, офлайн-буфер, подпись, MCP, VS Code | P0 |
+| B-02 | ~~Нет `partner-connector-*` (GitHub/Forgejo/Gitea): ветки, PR, задачи, вебхуки~~ | закрыто в v1.1: вебхуки push/PR/issues, `repo_facts`, привязка сессий, backfill | P0 |
 | B-03 | Нет транспорта `agent_chat`: канал пишет только в журнал сервера | дайджест не доставляется в чат агента автоматически | P1 |
-| B-04 | Флаг `no_output` описан в time-accounting.md и connectors.md, но не реализован | «часы есть — результата нет» не ловится; T-8 покрыт только косвенно через idle_no_signal | P1 |
+| B-04 | ~~Флаг `no_output` описан в time-accounting.md и connectors.md, но не реализован~~ | закрыто в v1.1: сигналы tool_calls + факты commit/pull_request; тесты | P1 |
 | B-05 | Нет публикации пакета `partner-tracker` (PyPI/приватный индекс) | `repo-pack/workflows` и quickstart ссылаются на несуществующую установку | P1 |
 | B-06 | Нет живого прогона PostgreSQL/Docker Compose в CI | миграции проверены offline и SQLite; риск PG-специфичных ошибок | P1 |
 
@@ -53,14 +56,15 @@
 
 ## 5. Порядок работ
 
-### v1.1 · Сквозной учет (P0)
+### v1.1 · Сквозной учет (P0) — сделано 2026-11-14
 
-1. `partner-agent-kit`: протокол сессии, heartbeat 30 с, офлайн-буфер,
+1. [x] `partner-agent-kit`: протокол сессии, heartbeat 30 с, офлайн-буфер,
    подпись устройства, MCP-инструменты; контракт — в `docs/03-architecture/agent-kit.md`.
-2. `partner-connector-github`: вебхуки push/pull_request/issues, привязка
-   сессии к задаче/ветке, факты коммитов/PR; затем Forgejo/Gitea.
-3. `no_output`-детект на основе signals и фактов коннектора + тесты.
-4. Docker Compose с PostgreSQL в CI (service container) и smoke-тест.
+2. [x] `partner-connector-github/forgejo`: вебхуки push/pull_request/issues,
+   привязка сессии к задаче/ветке, факты коммитов/PR, backfill через API.
+3. [x] `no_output`-детект на основе signals и фактов коннектора + тесты.
+4. [ ] Docker Compose с PostgreSQL в CI (service container) и smoke-тест
+   (нужна машина с доступом к Debian-репозиториям; issue #5).
 
 ### v1.2 · Эксплуатация и доверие (P1)
 

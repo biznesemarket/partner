@@ -2,6 +2,33 @@
 
 Формат — Keep a Changelog, версии — SemVer.
 
+## [1.1.0] — 2026-11-14
+
+### Добавлено — сквозной учет (issues #1–#3)
+
+- **`partner-agent-kit`** (`apps/partner_agent_kit`): CLI/daemon сессий,
+  heartbeat 30 с, разрез интервала по локальной полуночи пояса проекта,
+  классификация `active_human/supervised_agent/autonomous_agent/idle`,
+  офлайн-буфер JSONL с отправкой в порядке `seq`, HMAC-подпись устройства,
+  MCP-сервер stdio (6 инструментов, `confirm=true` для старта и спора),
+  VS Code-обертка. Общая строка подписи — `partner_cli.signing`.
+- **Коннекторы GitHub/Forgejo/Gitea**: вебхуки `push`, `pull_request`,
+  `issues` с HMAC-подписью и дедупликацией delivery; таблицы
+  `connector_events` и `repo_facts` (миграция `0006_connectors`); привязка
+  пустых `task_ref`/`branch` сессий по ветке `dev/<логин>/<тема>`;
+  эндпоинты `/v1/connectors/*`; backfill через `partner-connector sync-repo`.
+- **`no_output`**: флаг при >3 оплач. ч без коммитов, PR-диффов и
+  `signals.tool_calls`, привязанных к ветке/задаче сессий участника.
+- **Тесты**: 156 (25 новых): подпись, replay/duplicate seq, офлайн-буфер,
+  полночь, MCP, вебхуки, дедупликация, привязка сессий, no_output,
+  нормализация API GitHub/Forgejo.
+
+### Документация
+
+- `agent-kit.md` и `connectors.md` переведены в approved и описывают
+  реализацию v1.1; data-model дополнена двумя таблицами и API; backlog
+  B-01/B-02/B-04 закрыты.
+
 ## [Незапланировано]
 
 ### Подготовка к публикации на GitHub (2026-11-14)

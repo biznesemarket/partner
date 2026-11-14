@@ -38,6 +38,14 @@ SYNTHETIC_MIN_RUN = 4                  # ≥4 подряд одинаковых 
 SYNTHETIC_TOLERANCE_S = 5              # допуск «одинаковой» длительности
 
 
+def _signal_int(value) -> int:
+    """Сигнал из недоверенного JSON → int; мусор считается нулем."""
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _night_autonomous_seconds(pieces: list[Piece]) -> int:
     """Автономные секунды в ночном окне дня: [22:00, 24:00) ∪ [00:00, 06:00)."""
     total = 0
@@ -92,8 +100,8 @@ def detect_idle_no_signal(pieces: list[Piece], flags: list[str]) -> list[Piece]:
         if (
             p.cls in (calc.CLASS_SUPERVISED, calc.CLASS_ACTIVE)
             and p.signals is not None
-            and int(p.signals.get("input_events", 0) or 0) == 0
-            and int(p.signals.get("focus", 0) or 0) == 0
+            and _signal_int(p.signals.get("input_events", 0)) == 0
+            and _signal_int(p.signals.get("focus", 0)) == 0
         ):
             kept.append(
                 Piece(

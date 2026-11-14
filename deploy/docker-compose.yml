@@ -33,6 +33,9 @@ x-server-env: &server-env
   PARTNER_LICENSE_GRACE_DAYS: ${PARTNER_LICENSE_GRACE_DAYS:-14}
   # M9 подпись устройств (threat-model §4)
   PARTNER_REQUIRE_DEVICE_SIGN: ${PARTNER_REQUIRE_DEVICE_SIGN:-0}
+  # v1.1 коннекторы: секрет вебхука (общий или JSON по проектам)
+  PARTNER_CONNECTOR_SECRET: ${PARTNER_CONNECTOR_SECRET:-}
+  PARTNER_CONNECTOR_SECRETS: ${PARTNER_CONNECTOR_SECRETS:-}
 
 services:
   db:

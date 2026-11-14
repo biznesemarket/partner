@@ -20,6 +20,7 @@ from partner_cli import calc
 
 from . import antifraud
 from . import audit as audit_log
+from . import connectors
 from . import models
 from .config import settings
 
@@ -310,6 +311,59 @@ def day_intervals(
     return pieces, flags, agent_attached
 
 
+def _day_window(project: models.Project, date_iso: str) -> tuple[str, str]:
+    """UTC-границы локального дня проекта [00:00, 24:00)."""
+    tz = ZoneInfo(project.timezone)
+    day_start = datetime.fromisoformat(date_iso + "T00:00:00").replace(tzinfo=tz)
+    next_date = (day_start + timedelta(days=1)).date()
+    window_end = datetime.fromisoformat(next_date.isoformat() + "T00:00:00").replace(
+        tzinfo=tz
+    )
+    return (
+        day_start.astimezone(timezone.utc).isoformat(timespec="seconds"),
+        window_end.astimezone(timezone.utc).isoformat(timespec="seconds"),
+    )
+
+
+def _no_output_flag(
+    sess: Session,
+    project: models.Project,
+    participant_id: str,
+    date_iso: str,
+    pieces: list[antifraud.Piece],
+    paid_hours: Decimal,
+) -> list[str]:
+    """time-accounting.md §флаги: >3 оплач. ч при нуле коммитов/диффов/инструментов.
+
+    Флаг не меняет начисление. Учитываются только факты, привязанные к
+    ветке/задаче сессий этого участника, и tool_calls из сигналов heartbeat.
+    """
+    if paid_hours <= Decimal("3"):
+        return []
+    tool_calls = 0
+    for piece in pieces:
+        try:
+            tool_calls += max(0, int((piece.signals or {}).get("tool_calls", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+    lower_iso, upper_iso = _day_window(project, date_iso)
+    rows = sess.execute(
+        select(models.Session.branch, models.Session.task_ref)
+        .join(models.Interval, models.Interval.session_id == models.Session.session_id)
+        .where(models.Session.participant_id == participant_id)
+        .where(models.Session.project_id == project.project_id)
+        .where(models.Interval.end_utc > lower_iso)
+        .where(models.Interval.start_utc < upper_iso)
+    ).all()
+    branches = {row.branch for row in rows if row.branch}
+    task_refs = {connectors.task_key(row.task_ref) for row in rows if row.task_ref}
+    activity = connectors.output_activity(
+        sess, project.project_id, lower_iso, upper_iso, branches, task_refs
+    )
+    outputs = tool_calls + activity["commits"] + activity["pull_requests"] + activity["diff_lines"]
+    return [] if outputs else ["no_output"]
+
+
 def compute_day(
     sess: Session,
     project: models.Project,
@@ -333,6 +387,9 @@ def compute_day(
     rate_slots = [(0, rv.value_cents // 100)] if rv else [(0, calc_pol.rate_rub_per_hour)]
 
     result = calc.calc_day(raw, calc_pol, rate_slots=rate_slots, agent_attached=agent_attached)
+    flags = flags + _no_output_flag(
+        sess, project, participant_id, date_iso, pieces, result.paid_hours
+    )
 
     rate_version = 1 + len(
         [
@@ -355,7 +412,7 @@ def compute_day(
         "amount_rub": str(result.amount_rub),
         "share_bp": str(result.share_bp),
         "share_pct": str(result.share_pct),
-        "flags": flags + result.flags,
+        "flags": sorted(set(flags + result.flags)),
         "breakdown": result.breakdown,
         "intervals_raw": len(raw),
         "rate_version": rate_version,

@@ -33,6 +33,9 @@ Repository = "https://github.com/biznesemarket/partner"
 
 [project.scripts]
 partner = "partner_cli.cli:app"
+partner-agent = "partner_agent_kit.cli:app"
+partner-mcp = "partner_agent_kit.mcp_server:main"
+partner-connector = "partner_connectors.cli:app"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -40,7 +43,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["apps"]
-include = ["partner_cli*", "partner_server*"]
+include = ["partner_cli*", "partner_server*", "partner_agent_kit*", "partner_connectors*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

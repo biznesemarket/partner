@@ -13,6 +13,7 @@ from fastapi import FastAPI
 
 from . import dayclose
 from .config import settings
+from .connector_routes import router as connector_router
 from .db import make_engine, make_sessionmaker
 from .routes import router
 
@@ -83,6 +84,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(router)
+app.include_router(connector_router)
 
 
 @app.get("/")

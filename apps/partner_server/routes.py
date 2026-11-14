@@ -262,16 +262,12 @@ def post_heartbeat(
     return result
 
 
-def _device_sign_line(payload: "HeartbeatIn") -> str:
-    """Каноническая строка события для подписи (тот же порядок в agent-kit)."""
-    return f"{payload.event_id}|{payload.session_id}|{payload.seq}|{payload.start_utc}|{payload.end_utc}"
-
-
 def _verify_device_signature(
     db: Session, payload: HeartbeatIn, device_id: str | None, sign: str | None
 ) -> None:
-    import hashlib
     import hmac as hmac_mod
+
+    from partner_cli.signing import sign_heartbeat
 
     if not device_id or not sign:
         audit.incident(
@@ -286,9 +282,14 @@ def _verify_device_signature(
             meta={"event": payload.event_id},
         )
         raise HTTPException(403, {"code": "device_invalid", "detail": "устройство не зарегистрировано или отозвано"})
-    expected = hmac_mod.new(
-        device.secret.encode(), _device_sign_line(payload).encode(), hashlib.sha256
-    ).hexdigest()
+    expected = sign_heartbeat(
+        device.secret,
+        payload.event_id,
+        payload.session_id,
+        payload.seq,
+        payload.start_utc,
+        payload.end_utc,
+    )
     if not hmac_mod.compare_digest(sign, expected):
         audit.incident(
             db, code="device_signature_invalid", entity="devices",

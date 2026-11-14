@@ -74,6 +74,24 @@ python tools/policy_lint.py docs/02-policy/policy.example.yaml
 partner init --demo          # мастер настройки, демо-режим без вопросов
 ```
 
+## Сквозной учет: agent-kit и коннекторы (v1.1)
+
+```bash
+# в среде разработчика: сессия + heartbeat 30 с + офлайн-буфер + подпись
+partner-agent init --participant dev1 --task 42 --branch dev/dev1/42
+partner-agent start --task 42 --branch dev/dev1/42
+partner-agent run                       # или: partner-agent mcp (stdio для ИИ-агента)
+partner-agent status
+
+# на сервере: вебхуки GitHub/Forgejo/Gitea и backfill фактов
+export PARTNER_CONNECTOR_SECRET="секрет-вебхука"
+partner-connector sync-repo --repo acme/partner --project partner --forge github
+```
+
+Контракты: [agent-kit.md](docs/03-architecture/agent-kit.md),
+[connectors.md](docs/03-architecture/connectors.md). Кит не отправляет код,
+промпты и имена файлов — только счетчики активности.
+
 ## Запуск сервера (M4–M7)
 
 FastAPI-сервер учета времени: идемпотентный heartbeat, сборка и закрытие
@@ -96,6 +114,9 @@ export PARTNER_LICENSE_SECRET="секрет-поставки"        # выда�
 export PARTNER_LICENSE_REQUIRED=1                      # боевой контур
 # подпись устройств (threat-model §4, опционально):
 export PARTNER_REQUIRE_DEVICE_SIGN=0
+# коннекторы (v1.1): секрет вебхука обязателен для приема событий
+export PARTNER_CONNECTOR_SECRET="секрет-вебхука"
+# или per-project: PARTNER_CONNECTOR_SECRETS='{"partner":"секрет"}'
 uvicorn apps.partner_server.main:app --port 8000      # OpenAPI: /docs
 ```
 
@@ -107,7 +128,9 @@ uvicorn apps.partner_server.main:app --port 8000      # OpenAPI: /docs
 `GET /v1/audit`, `GET /v1/legal[/gates/{id}|/enable]`,
 `POST /v1/snapshots/{month}`, `GET /v1/snapshots[/{id}]`,
 `POST /v1/legal/export`, `GET /v1/metrics` (M8, Prometheus),
-`GET /v1/license`, `POST /v1/devices` (M9), `GET /healthz`.
+`GET /v1/license`, `POST /v1/devices` (M9),
+`POST /v1/connectors/{forge}/webhook|import`, `GET /v1/connectors/facts|events`
+(v1.1), `GET /healthz`.
 Миграции: `alembic upgrade head`
 (см. `alembic.ini`). Антифрод M5: night/synthetic/replay/clock_skew/late
 детекты + изоляция tenants (403) + append-only аудит.
@@ -164,21 +187,21 @@ curl -fsS http://localhost:8080/v1/metrics
 эксплуатация и алерты — [docs/07-ops/runbook.md](docs/07-ops/runbook.md),
 политика бэкапов — [ADR-0020](docs/03-architecture/adr/ADR-0020-backup-policy.md).
 
-## Статус · v1.0.0
+## Статус · v1.1.0
 
 Все итерации M0–M9 выполнены: CLI и калькулятор (M1–M3), сервер (M4),
 антифрод и аудит (M5), дайджесты и спор дня (M6), юридический модуль (M7),
 поставка и эксплуатация (M8), релиз — лицензирование подписки, подпись
-устройств, docs-сайт, приемка (M9; **131 тест**, акт приемки —
-docs/05-process/release-acceptance.md). Осталась организационная часть
-DoD: пилотная установка у первого клиента.
-План — [docs/05-process/development-plan.md](docs/05-process/development-plan.md).
+устройств, docs-сайт, приемка (M9). v1.1 закрывает сквозной учет:
+`partner-agent-kit` (сессии, heartbeat, офлайн-буфер, подпись, MCP,
+VS Code), коннекторы GitHub/Forgejo/Gitea (вебхуки, `repo_facts`,
+привязка сессий) и флаг `no_output`. **156 тестов**, CI Linux + Windows.
+Акт приемки v1.0.0 — docs/05-process/release-acceptance.md.
 
-**Что дальше.** В репозитории пока нет `partner-agent-kit` и
-`partner-connector-*`: серверная часть готова, но сквозной сбор времени
-из IDE и факты GitHub/Forgejo требуют реализации. Разрывы и порядок работ
-зафиксированы в [docs/05-process/backlog.md](docs/05-process/backlog.md)
-(v1.1: agent-kit и коннекторы).
+**Что дальше.** P1: tenant/RBAC hardening (#4), PostgreSQL в CI (#5),
+публикация пакета (#6), инвариант закрытого дня (#7). P2: overview/гайды
+(#8), веб-дашборд (#10). Порядок и разрывы — в
+[docs/05-process/backlog.md](docs/05-process/backlog.md).
 
 ## Лицензия
 

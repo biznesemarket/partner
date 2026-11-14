@@ -5,13 +5,14 @@
 | Версия | 2.1 |
 | Дата | 2026-11-13 |
 | Заменяет | D5-data-model (перенос + сессии, heartbeat, дни, версии) |
-| Связанные | overview, ADR-0016, ADR-0019, apps/partner_cli/schema.sql (прототип), apps/partner_server/models.py (реализация), migrations/versions/0001_initial.py, migrations/versions/0002_m6.py |
+| Связанные | overview, ADR-0016, ADR-0019, apps/partner_cli/schema.sql (прототип), apps/partner_server/models.py (реализация), migrations/versions/0001_initial.py … 0006_connectors.py |
 | Статус | Реализовано в M4–M6: ORM + миграции Alembic, SQLite (demo) и PostgreSQL (prod) |
 
 ## 1. Реализация M4 и целевая схема
 
 Схема реализована в итерациях M4–M6 (`apps/partner_server/models.py`,
-16 таблиц) как ORM SQLAlchemy 2.0 с metadata-driven миграциями Alembic
+20 таблиц; v1.1 добавила `connector_events` и `repo_facts`)
+как ORM SQLAlchemy 2.0 с metadata-driven миграциями Alembic
 (`0001_initial` — база, `0002_m6` — споры и уведомления, идемпотентная
 через checkfirst). Один и тот же код моделей работает
 на PostgreSQL (prod) и SQLite (режим embedded/demo — развитие прототипа
@@ -50,6 +51,8 @@ CLI). Прототипная схема `apps/partner_cli/schema.sql` сохра
 | audit_logs | аудит действий и инцидентов (M5): кто, когда, старое/новое | audit_id, ts, actor, entity, action |
 | disputes | споры дня (M6): разработчик помечает, директор решает в окне 3 дня | dispute_id, FK day_record, status open/resolved/rejected/expired, window_deadline, interval_refs |
 | notifications | очередь доставки дайджестов/событий (M6): канал, статус, attempts | notification_id, kind, recipient, channel, status pending/sent/failed, payload_json, text |
+| connector_events | принятые вебхуки git-платформ (v1.1): доставка, тип, проект | delivery_id, forge, repo, event_type, project_id, payload_json |
+| repo_facts | факты веток/коммитов/PR/issues (v1.1): привязка сессий, no_output | fact_id, project_id, kind, ref, task_ref, branch, occurred_at |
 
 Единицы хранения: время — секунды (UTC), деньги — копейки (BIGINT),
 доля — базисные пункты (share_bp = доля × 10000). Никаких float.
@@ -80,6 +83,9 @@ CLI). Прототипная схема `apps/partner_cli/schema.sql` сохра
 | /v1/metrics | GET | эксплуатационные метрики M8 (Prometheus text, только агрегаты) |
 | /v1/license | GET | состояние лицензии подписки M9.1 (ADR-0018) |
 | /v1/devices, /v1/devices/{id}/revoke | POST/GET | устройства источников M9: регистрация (секрет выдается один раз), отзыв; подпись heartbeat X-Partner-Sign (threat-model §4) |
+| /v1/connectors/{forge}/webhook | POST | вебхук GitHub/Forgejo/Gitea (v1.1): HMAC-подпись, дедупликация delivery, факты repo_facts |
+| /v1/connectors/{forge}/import | POST | backfill фактов из API платформы (Bearer), идемпотентно |
+| /v1/connectors/facts, /v1/connectors/events | GET | чтение фактов и журнала доставок проекта (Bearer) |
 
 Аутентификация: Bearer при заданном PARTNER_API_TOKEN; demo-режим без токена
 — только local. Изоляция tenants (403 между организациями) — M5.
@@ -100,6 +106,7 @@ tenants 1──n projects 1──n policies 1──n rate_versions
                             │              └── n valuation_versions
                             ├── n sessions 1──n heartbeats
                             │      └── 1──n intervals
+                            ├── n connector_events 1──n repo_facts
 participants 1──n identities ──┘
 participants 1──n day_records 1──n adjustments ←── disputes
                      ├── n flags

@@ -34,6 +34,11 @@ docker compose -f deploy/docker-compose.yml ps   # migrate = Exit 0, server = he
 Схема БД накатывается сервисом `migrate` (alembic upgrade head) при каждом
 `up`/обновлении; сервер стартует только после успешной миграции.
 
+Коннекторы v1.1: задайте `PARTNER_CONNECTOR_SECRET` (общий) или
+`PARTNER_CONNECTOR_SECRETS` (JSON `project_id → секрет`) — без секрета
+вебхуки возвращают 503. URL вебхука: `https://<host>/v1/connectors/github/webhook`
+(аналогично `forgejo`/`gitea`).
+
 Проверка:
 
 ```bash
