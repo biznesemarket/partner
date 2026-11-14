@@ -132,9 +132,10 @@ wizard выдает политику, валидную линтером.
    = имена в коде.
 
 Выполнено (M4): data-model.md 2.0 (ORM + Alembic, SQLite/PostgreSQL),
-сервер и миграции в коде. Остаются: overview.md (C4 L1–L3), connectors.md
-(протоколы GitHub/Forgejo), отдельная OpenAPI-выжимка — статус draft,
-вынесено в backlog.
+сервер и миграции в коде. Выполнено в v1.1: connectors.md (протоколы
+GitHub/Forgejo, вебхуки, факты) и agent-kit.md (CLI/MCP). Остаются:
+overview.md (C4 L1–L3) и отдельная OpenAPI-выжимка — статус draft,
+вынесено в backlog #8.
 
 **DoD:** разработчик начинает MVP сервера без дополнительных вопросов;
 все имена таблиц и эндпоинтов совпадают между data-model.md, OpenAPI и кодом.
@@ -229,8 +230,8 @@ docs-сайт — tools/build_docs_site.py, только approved, артефа�
 | docs/02-policy/policy.example.yaml | код | approved | 1.0 |
 | docs/03-architecture/overview.md | разработчик | draft | 1.0 → C4 в D4 |
 | docs/03-architecture/data-model.md | разработчик | approved | 2.0 (M4 реализован) |
-| docs/03-architecture/connectors.md | разработчик | draft | 1.0 |
-| docs/03-architecture/agent-kit.md | разработчик | draft | 0.1 (контракт v1.1) |
+| docs/03-architecture/connectors.md | разработчик | approved | 1.1 (реализовано v1.1) |
+| docs/03-architecture/agent-kit.md | разработчик | approved | 1.0 (реализовано v1.1) |
 | docs/03-architecture/onboarding-wizard.md | директор | approved | 1.0 |
 | docs/03-architecture/adr/ADR-0001…0020 | команда | approved (0016–0019) | см. migration-map |
 | docs/03-architecture/adr/README.md | команда | approved | 2.1 (индекс + реестр) |

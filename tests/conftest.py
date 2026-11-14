@@ -43,7 +43,7 @@ def factory(tmp_path):
         s.add(
             models.Project(
                 project_id="partner", tenant_id="fonii", name="Партнер",
-                timezone=TZ,
+                timezone=TZ, forge="github", repo="acme/partner",
             )
         )
         s.add(models.Participant(participant_id="dev1", tenant_id="fonii", display_name="Разработчик"))

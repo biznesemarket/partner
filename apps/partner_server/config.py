@@ -46,6 +46,10 @@ class Settings:
     # M9 (threat-model §4): требовать подпись устройства на каждом heartbeat.
     # 0 — подпись проверяется, если передана; 1 — неподписанные батчи отклоняются.
     require_device_sign: bool = False
+    # v1.1 коннекторы: общий секрет вебхука и карта project_id → secret в JSON.
+    # Секрет обязателен (connectors.md §5); пустой → webhook 503.
+    connector_secret: str = ""
+    connector_secrets_json: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -68,6 +72,8 @@ class Settings:
             license_required=os.getenv("PARTNER_LICENSE_REQUIRED", "0") == "1",
             license_grace_days=int(os.getenv("PARTNER_LICENSE_GRACE_DAYS", "14")),
             require_device_sign=os.getenv("PARTNER_REQUIRE_DEVICE_SIGN", "0") == "1",
+            connector_secret=os.getenv("PARTNER_CONNECTOR_SECRET", ""),
+            connector_secrets_json=os.getenv("PARTNER_CONNECTOR_SECRETS", ""),
         )
 
 

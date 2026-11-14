@@ -2,7 +2,8 @@
 
 Сценарии:
 - S-01  сайт собирается: index.html + страницы; approved-документы опубликованы
-- S-02  draft-документы НЕ публикуются (connectors, overview, legal-module)
+- S-02  draft-документы НЕ публикуются (overview, legal-module);
+        connectors/agent-kit опубликованы после реализации v1.1
 - S-03  страницы — валидный HTML без утечки сырого markdown таблиц
 - S-04  resolve_status: собственный статус с токеном выигрывает у реестра
 """
@@ -49,13 +50,14 @@ def test_site_builds_with_index_and_pages(site):
 def test_draft_docs_not_published(site):
     out, _, _ = site
     names = [p.name for p in out.glob("*.html")]
-    assert not any("connectors" in nm for nm in names)
     assert not any("overview" in nm for nm in names)
     assert not any("legal-module" in nm for nm in names)
-    # approved есть
+    # approved есть, включая контракты v1.1
     assert "docs__07-ops__installation.html" in names
     assert "docs__07-ops__runbook.html" in names
     assert "docs__02-policy__time-accounting.html" in names
+    assert "docs__03-architecture__connectors.html" in names
+    assert "docs__03-architecture__agent-kit.html" in names
 
 
 # --- S-03 ----------------------------------------------------------------

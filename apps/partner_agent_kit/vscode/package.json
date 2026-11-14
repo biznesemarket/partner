@@ -1,0 +1,50 @@
+{
+  "name": "partner-agent-vscode",
+  "displayName": "Партнер — учет времени с ИИ-агентом",
+  "description": "Тонкая обертка над partner-agent: сессии, heartbeat, статус дня без отправки кода",
+  "version": "1.1.0",
+  "publisher": "partner",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "partner.startSession",
+        "title": "Партнер: начать сессию"
+      },
+      {
+        "command": "partner.stopSession",
+        "title": "Партнер: завершить сессию"
+      },
+      {
+        "command": "partner.status",
+        "title": "Партнер: статус и часы"
+      }
+    ],
+    "configuration": {
+      "title": "Партнер",
+      "properties": {
+        "partner.cliPath": {
+          "type": "string",
+          "default": "partner-agent",
+          "description": "Путь к исполняемому файлу partner-agent"
+        },
+        "partner.heartbeatSec": {
+          "type": "number",
+          "default": 30,
+          "minimum": 30,
+          "description": "Период heartbeat в секундах (не чаще раза в 30 с)"
+        }
+      }
+    }
+  }
+}

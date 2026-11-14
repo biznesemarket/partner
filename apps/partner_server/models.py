@@ -12,6 +12,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -324,6 +325,58 @@ class AuditLog(Base):
     old_value: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     new_value: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class ConnectorEvent(Base):
+    """Принятый вебхук git-платформы (connectors.md §2–§5).
+
+    delivery_id — ключ идемпотентности (X-GitHub-Delivery и аналоги);
+    payload_json хранит только метаданные события, без кода и тел PR/issues.
+    """
+
+    __tablename__ = "connector_events"
+
+    delivery_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    forge: Mapped[str] = mapped_column(String(32), nullable=False)
+    repo: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    action: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.project_id"), nullable=False
+    )
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    received_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), default="webhook")
+
+
+class RepoFact(Base):
+    """Факт платформы: ветка, коммит, PR, issue, приемка (connectors.md §4).
+
+    Факты — черновые метаданные для привязки сессий и антифрод-флага
+    no_output; расчет денег по ним не выполняется.
+    """
+
+    __tablename__ = "repo_facts"
+    __table_args__ = (
+        Index("ix_repo_facts_project_kind", "project_id", "kind"),
+        Index("ix_repo_facts_project_branch", "project_id", "branch"),
+        Index("ix_repo_facts_project_task", "project_id", "task_ref"),
+        Index("ix_repo_facts_occurred", "project_id", "occurred_at"),
+    )
+
+    fact_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.project_id"), nullable=False
+    )
+    delivery_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    task_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    actor: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    occurred_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class Device(Base):
