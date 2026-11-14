@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import pathlib
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 from . import dayclose
 from .config import settings
@@ -90,6 +92,16 @@ app.include_router(connector_router)
 @app.get("/")
 def root():
     return {"service": "partner-server", "version": app.version, "docs": "/docs"}
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard():
+    """Кабинет директора: статическая страница, данные — только через /v1 API."""
+    return FileResponse(
+        pathlib.Path(__file__).with_name("dashboard.html"),
+        media_type="text/html",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/healthz", include_in_schema=False)

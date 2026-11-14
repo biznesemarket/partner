@@ -638,9 +638,14 @@ def explain_day(
 # иначе статический маршрут перебивается динамическим и всегда 404
 # («участник 'summary' не найден»), эндпоинт недостижим.
 @router.get("/status/summary", tags=["status"])
-def status_summary(project: models.Project = Depends(get_project), db: Session = Depends(get_db), _: None = Depends(require_token)):
-    """Сводка директора: суммы по участникам за текущий месяц."""
-    month = _current_month(project)
+def status_summary(
+    month: str | None = Query(default=None, pattern="^\\d{4}-\\d{2}$"),
+    project: models.Project = Depends(get_project),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_token),
+):
+    """Сводка директора: суммы по участникам за месяц (по умолчанию текущий)."""
+    month = month or _current_month(project)
     rows = db.execute(
         select(
             models.DayRecord.participant_id,
@@ -651,13 +656,33 @@ def status_summary(project: models.Project = Depends(get_project), db: Session =
         .where(models.DayRecord.date.like(f"{month}%"))
         .group_by(models.DayRecord.participant_id)
     ).all()
+    deltas = dict(
+        db.execute(
+            select(
+                models.DayRecord.participant_id,
+                func.sum(models.Adjustment.delta_cents),
+            )
+            .join(
+                models.Adjustment,
+                models.Adjustment.day_id == models.DayRecord.day_id,
+            )
+            .where(models.DayRecord.project_id == project.project_id)
+            .where(models.DayRecord.date.like(f"{month}%"))
+            .group_by(models.DayRecord.participant_id)
+        ).all()
+    )
     return {
         "month": month,
+        "project_id": project.project_id,
         "participants": [
             {
                 "participant_id": pid,
                 "paid_hours_month": str(Decimal(ps or 0) / 3600),
                 "amount_rub_month": str(Decimal(ac or 0) / 100),
+                "adjustments_delta_cents": int(deltas.get(pid) or 0),
+                "effective_amount_rub": str(
+                    (Decimal(ac or 0) + Decimal(deltas.get(pid) or 0)) / 100
+                ),
             }
             for pid, ps, ac in rows
         ],
@@ -715,6 +740,72 @@ def _current_month(project: models.Project | None = None) -> str:
 
         return datetime.now(ZoneInfo(project.timezone)).isoformat()[:7]
     return datetime.now(timezone.utc).isoformat()[:7]
+
+
+@router.get("/flags", tags=["status"])
+def list_flags(
+    month: str | None = Query(default=None, pattern="^\\d{4}-\\d{2}$"),
+    code: str | None = Query(default=None),
+    participant_id: str | None = Query(default=None),
+    limit: int = Query(default=1000, ge=1, le=5000),
+    project: models.Project = Depends(get_project),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_token),
+):
+    """Флаги закрытых дней для дашборда директора (tenant/project-scoped).
+
+    Возвращает антифрод/кап-флаги месяца с исходной и эффективной суммой
+    дня (с учётом append-only adjustments). Флаги не меняют начисление.
+    """
+    month = month or _current_month(project)
+    stmt = (
+        select(models.Flag, models.DayRecord)
+        .join(models.DayRecord, models.Flag.day_id == models.DayRecord.day_id)
+        .where(models.DayRecord.project_id == project.project_id)
+        .where(models.DayRecord.date.like(f"{month}%"))
+        .order_by(
+            models.DayRecord.date,
+            models.DayRecord.participant_id,
+            models.Flag.code,
+        )
+        .limit(limit)
+    )
+    if code:
+        stmt = stmt.where(models.Flag.code == code)
+    if participant_id:
+        stmt = stmt.where(models.DayRecord.participant_id == participant_id)
+    rows = db.execute(stmt).all()
+
+    day_ids = [rec.day_id for _, rec in rows]
+    deltas: dict[str, int] = {}
+    if day_ids:
+        for day_id, delta in db.execute(
+            select(models.Adjustment.day_id, func.sum(models.Adjustment.delta_cents))
+            .where(models.Adjustment.day_id.in_(day_ids))
+            .group_by(models.Adjustment.day_id)
+        ).all():
+            deltas[day_id] = int(delta or 0)
+
+    return {
+        "month": month,
+        "project_id": project.project_id,
+        "limit": limit,
+        "count": len(rows),
+        "flags": [
+            {
+                "day_id": rec.day_id,
+                "participant_id": rec.participant_id,
+                "date": rec.date,
+                "code": flag.code,
+                "detail": flag.detail,
+                "paid_seconds": rec.paid_seconds,
+                "amount_cents": rec.amount_cents,
+                "effective_amount_cents": rec.amount_cents + deltas.get(rec.day_id, 0),
+                "closed": bool(rec.closed),
+            }
+            for flag, rec in rows
+        ],
+    }
 
 
 # ---------- дайджесты и споры (M6) ----------
@@ -813,11 +904,12 @@ def resolve_dispute(
 def list_disputes(
     status: str | None = Query(default=None, pattern="^(open|resolved|rejected|expired)$"),
     project_id: str | None = Query(default=None),
+    month: str | None = Query(default=None, pattern="^\\d{4}-\\d{2}$"),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_token),
 ):
-    """Список споров (директор): фильтр по статусу и проекту в рамках tenant."""
+    """Список споров (директор): фильтр по статусу, проекту и месяцу дня."""
     project = scoped_project(db, project_id, principal)
     rows = disputes.list_disputes(
         db,
@@ -825,6 +917,7 @@ def list_disputes(
         limit=limit,
         tenant_id=principal.tenant_id,
         project_id=project.project_id if project else None,
+        month=month,
     )
     return {
         "count": len(rows),

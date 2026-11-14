@@ -124,10 +124,18 @@ def test_tenant_token_limits_projects_days_and_status(
         s.commit()
 
     # Сводка директора: только участники своего tenant.
-    a = client.get("/v1/status/summary", headers=tenant_tokens["a"])
+    a = client.get(
+        "/v1/status/summary",
+        params={"month": "2026-11"},
+        headers=tenant_tokens["a"],
+    )
     assert a.status_code == 200, a.text
     assert [p["participant_id"] for p in a.json()["participants"]] == ["dev1"]
-    b = client.get("/v1/status/summary", headers=tenant_tokens["b"])
+    b = client.get(
+        "/v1/status/summary",
+        params={"month": "2026-11"},
+        headers=tenant_tokens["b"],
+    )
     assert [p["participant_id"] for p in b.json()["participants"]] == ["dev2"]
 
     # Чужой день/участник/проект — 403, а не 404-утечка.
@@ -178,9 +186,13 @@ def test_status_summary_and_status_filter_project_within_tenant(client, factory)
         s.add(_day("partner2|dev3|2026-11-12", "dev3", "partner2"))
         s.commit()
 
-    r = client.get("/v1/status/summary", params={"project_id": "partner"})
+    r = client.get(
+        "/v1/status/summary", params={"month": "2026-11", "project_id": "partner"}
+    )
     assert [p["participant_id"] for p in r.json()["participants"]] == ["dev1"]
-    r2 = client.get("/v1/status/summary", params={"project_id": "partner2"})
+    r2 = client.get(
+        "/v1/status/summary", params={"month": "2026-11", "project_id": "partner2"}
+    )
     assert [p["participant_id"] for p in r2.json()["participants"]] == ["dev3"]
 
     # status участника фильтруется по project_id.
@@ -379,3 +391,34 @@ def test_legacy_day_record_is_readable_but_not_mixed(client, factory):
     )
     assert r.status_code == 200
     assert r.json()["closed"] is False
+
+def test_flags_scoped_by_tenant_and_project(
+    client, factory, tenant_tokens, other_tenant
+):
+    """Флаги дашборда не смешивают tenant/проекты (issue #10)."""
+    with factory() as s:
+        s.add(_day("partner|dev1|2026-11-12", "dev1", "partner"))
+        s.add(models.Flag(day_id="partner|dev1|2026-11-12", code="no_output"))
+        s.add(_day("other-proj|dev2|2026-11-12", "dev2", "other-proj"))
+        s.add(models.Flag(day_id="other-proj|dev2|2026-11-12", code="clock_skew"))
+        s.commit()
+
+    a = client.get("/v1/flags", headers=tenant_tokens["a"])
+    assert a.status_code == 200, a.text
+    assert [(f["participant_id"], f["code"]) for f in a.json()["flags"]] == [
+        ("dev1", "no_output")
+    ]
+    b = client.get("/v1/flags", headers=tenant_tokens["b"])
+    assert [(f["participant_id"], f["code"]) for f in b.json()["flags"]] == [
+        ("dev2", "clock_skew")
+    ]
+
+    # Чужой проект нельзя запросить даже с явным project_id.
+    assert (
+        client.get(
+            "/v1/flags",
+            params={"project_id": "other-proj"},
+            headers=tenant_tokens["a"],
+        ).status_code
+        == 403
+    )

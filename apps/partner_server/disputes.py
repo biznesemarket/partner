@@ -284,6 +284,7 @@ def list_disputes(
     limit: int = 100,
     tenant_id: str | None = None,
     project_id: str | None = None,
+    month: str | None = None,
 ) -> list[models.Dispute]:
     stmt = select(models.Dispute).order_by(models.Dispute.opened_at.desc()).limit(limit)
     if status:
@@ -296,4 +297,8 @@ def list_disputes(
         stmt = stmt.where(models.Project.tenant_id == tenant_id)
     if project_id:
         stmt = stmt.where(models.Dispute.project_id == project_id)
+    if month:
+        stmt = stmt.join(
+            models.DayRecord, models.Dispute.day_id == models.DayRecord.day_id
+        ).where(models.DayRecord.date.like(f"{month}%"))
     return sess.scalars(stmt).all()
