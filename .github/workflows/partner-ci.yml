@@ -140,6 +140,30 @@ jobs:
           /tmp/pkg-venv/bin/pip install dist/*.whl
           /tmp/pkg-venv/bin/partner --help >/dev/null
           /tmp/pkg-venv/bin/python -c "import partner_cli, partner_agent_kit, partner_connectors; print('wheel OK')"
+      - name: "Приватная поставка: release asset по API-токену"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf /tmp/delivery && mkdir -p /tmp/delivery
+          python tools/partner_dist.py resolve --version latest \
+            --download /tmp/delivery --json > /tmp/delivery/dist.json
+          python - <<'PY'
+          import json
+          import pathlib
+
+          data = json.loads(pathlib.Path("/tmp/delivery/dist.json").read_text())
+          wheel = pathlib.Path("/tmp/delivery") / data["wheel"]
+          assert wheel.is_file(), wheel
+          print(f"delivery OK: {data['version']} {data['sha256'][:12]}…")
+          PY
+          python -m venv /tmp/delivery-venv
+          /tmp/delivery-venv/bin/pip install --upgrade pip
+          /tmp/delivery-venv/bin/pip install /tmp/delivery/*.whl
+          mkdir -p /tmp/delivery-client
+          cp repo-pack/policy.example.yaml /tmp/delivery-client/policy.yaml
+          cd /tmp/delivery-client
+          /tmp/delivery-venv/bin/partner day --demo > /tmp/delivery/day.out
+          test -s /tmp/delivery/day.out
       - name: "Чистый репозиторий клиента: policy + AGENTS + workflow"
         run: |
           rm -rf /tmp/client && mkdir -p /tmp/client/.github/workflows

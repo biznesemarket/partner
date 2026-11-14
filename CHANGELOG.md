@@ -56,6 +56,20 @@
 
 ## [Незапланировано]
 
+### Поставка: приватный wheel и fail-closed CI (2026-11-14)
+
+- **repo-pack**: workflow больше не ставит одноименный пакет с публичного
+  PyPI — без `PARTNER_TRACKER_*` падает. Для приватного GitHub Release
+  asset обязательны `PARTNER_TRACKER_WHEEL` (API URL) и
+  `PARTNER_TRACKER_TOKEN` (fine-grained PAT, Contents: Read-only);
+  `PARTNER_TRACKER_SHA256` проверяет целостность wheel.
+- **Инструменты**: `tools/partner_dist.py resolve` находит wheel, sha256 и
+  печатает команды `gh secret set`; `manifest` собирает
+  `dist-manifest.json`; release-workflow прикладывает манифест к релизу.
+- **CI**: `package-smoke` скачивает приватный release asset по
+  `GITHUB_TOKEN`, ставит его в чистое окружение и прогоняет
+  `partner day --demo`.
+
 ### Подготовка к публикации на GitHub (2026-11-14)
 
 - **Кроссплатформенность**: тесты и инструменты больше не падают на Windows

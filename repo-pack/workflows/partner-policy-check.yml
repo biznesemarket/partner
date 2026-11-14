@@ -22,20 +22,61 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Установить partner-tracker (приватный индекс или артефакт)
+      - name: Установить partner-tracker (приватный индекс или wheel)
         env:
           # Вариант 1: URL wheel-артефакта из приватного релиза (секрет репозитория).
           PARTNER_TRACKER_WHEEL: ${{ secrets.PARTNER_TRACKER_WHEEL }}
           # Вариант 2: приватный PyPI-индекс.
           PARTNER_TRACKER_INDEX_URL: ${{ secrets.PARTNER_TRACKER_INDEX_URL }}
+          # Токен для api.github.com (fine-grained PAT, Contents: Read-only).
+          PARTNER_TRACKER_TOKEN: ${{ secrets.PARTNER_TRACKER_TOKEN }}
+          # Ожидаемый sha256 wheel из dist-manifest.json релиза.
+          PARTNER_TRACKER_SHA256: ${{ secrets.PARTNER_TRACKER_SHA256 }}
         run: |
-          if [ -n "$PARTNER_TRACKER_WHEEL" ]; then
-            pip install "$PARTNER_TRACKER_WHEEL"
-          elif [ -n "$PARTNER_TRACKER_INDEX_URL" ]; then
-            pip install --index-url "$PARTNER_TRACKER_INDEX_URL" partner-tracker
-          else
-            pip install partner-tracker
+          set -euo pipefail
+          if [ -n "${PARTNER_TRACKER_INDEX_URL}" ]; then
+            pip install --index-url "${PARTNER_TRACKER_INDEX_URL}" partner-tracker
+            exit 0
           fi
+          if [ -z "${PARTNER_TRACKER_WHEEL}" ]; then
+            echo "::error::Задайте PARTNER_TRACKER_WHEEL или PARTNER_TRACKER_INDEX_URL; публичный PyPI не используется"
+            exit 1
+          fi
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "${tmp}"' EXIT
+          # Валидное имя wheel: pip не принимает произвольный файл.
+          wheel="${tmp}/partner_tracker-0.0.0-py3-none-any.whl"
+          case "${PARTNER_TRACKER_WHEEL}" in
+            https://api.github.com/*)
+              if [ -z "${PARTNER_TRACKER_TOKEN}" ]; then
+                echo "::error::Для приватного release asset нужен PARTNER_TRACKER_TOKEN"
+                exit 1
+              fi
+              curl -fsSL --retry 3 \
+                -H "Authorization: Bearer ${PARTNER_TRACKER_TOKEN}" \
+                -H "Accept: application/octet-stream" \
+                -o "${wheel}" "${PARTNER_TRACKER_WHEEL}"
+              ;;
+            *)
+              # Публичный URL или приватный индекс — без передачи токена.
+              curl -fsSL --retry 3 -o "${wheel}" "${PARTNER_TRACKER_WHEEL}"
+              ;;
+          esac
+          python - "${wheel}" <<'PY'
+          import sys
+          import zipfile
+
+          path = sys.argv[1]
+          if not zipfile.is_zipfile(path):
+              raise SystemExit(f"не wheel: {path}")
+          with zipfile.ZipFile(path) as archive:
+              if not any(name.endswith(".dist-info/METADATA") for name in archive.namelist()):
+                  raise SystemExit("в архиве нет .dist-info/METADATA")
+          PY
+          if [ -n "${PARTNER_TRACKER_SHA256}" ]; then
+            echo "${PARTNER_TRACKER_SHA256}  ${wheel}" | sha256sum -c -
+          fi
+          pip install "${wheel}"
 
       - name: Проверить policy.yaml
         run: |

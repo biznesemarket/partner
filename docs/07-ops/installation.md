@@ -65,22 +65,38 @@ docker compose logs server | grep dayclose  # планировщик закры�
    ```bash
    pip install --index-url https://<user>:<token>@pypi.example/partner/simple partner-tracker
    ```
-2. **Wheel-артефакт релиза** (GitHub Release приватного репозитория вендора):
+2. **Wheel-артефакт GitHub Release** (приватный репозиторий вендора).
+   Прямая ссылка `releases/download/...` для приватного репозитория не
+   работает: скачивайте asset через API с токеном. Команда ниже — из
+   checkout репозитория вендора; клиенту вендор передает готовые API URL
+   и `sha256` из `dist-manifest.json`.
    ```bash
-   pip install https://github.com/biznesemarket/partner/releases/download/v1.2.0/partner_tracker-1.2.0-py3-none-any.whl
+   export GH_TOKEN=<fine-grained PAT: Contents: Read-only>
+   python tools/partner_dist.py resolve --version latest --download dist-release
+   pip install dist-release/partner_tracker-*.whl
    ```
-   Для приватного репозитория используйте токен с доступом к releases или
-   скачайте артефакт и установите локальный файл.
+   В релизе лежит `dist-manifest.json` с `sha256` и API URL каждого
+   артефакта; `resolve` сверяет хеш при скачивании.
 3. **Локальная разработка продукта**: `pip install -e ".[dev,server]"`.
 
 ```bash
 partner init                  # мастер настройки (docs/00-start/quickstart.md)
 ```
 
-CI клиента (`repo-pack/workflows/partner-policy-check.yml`) берет адрес
-поставки из секретов `PARTNER_TRACKER_WHEEL` (URL wheel) или
-`PARTNER_TRACKER_INDEX_URL` (приватный индекс); без них — публичный
-`pip install partner-tracker`.
+CI клиента (`repo-pack/workflows/partner-policy-check.yml`) берет поставку
+только из секретов (публичный PyPI не используется — fail closed):
+
+| Секрет | Значение |
+|---|---|
+| `PARTNER_TRACKER_WHEEL` | API URL asset: `https://api.github.com/repos/biznesemarket/partner/releases/assets/<id>` |
+| `PARTNER_TRACKER_TOKEN` | fine-grained PAT, Contents: Read-only на `biznesemarket/partner` |
+| `PARTNER_TRACKER_SHA256` | sha256 wheel из `dist-manifest.json` (проверка целостности) |
+| `PARTNER_TRACKER_INDEX_URL` | альтернатива wheel: приватный индекс с credentials в URL |
+
+Команды настройки клиентского репозитория печатает
+`python tools/partner_dist.py resolve --version latest --target-repo <owner/repo>`.
+Токен задается отдельно (`gh secret set PARTNER_TRACKER_TOKEN --repo <owner/repo>`)
+и не должен быть широким PAT владельца вендора.
 
 Прототип может работать без сервера: CLI держит SQLite в `./data/partner.sqlite3`
 (схема `apps/partner_cli/schema.sql`), это режим демо и оценки.
