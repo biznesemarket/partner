@@ -23,6 +23,9 @@
 4. **Deny by default.** Bearer-токен на всех данных, tenant-токены
    `PARTNER_TENANT_TOKENS`, HMAC устройства и HMAC вебхуков; открыты
    только `/healthz`, `/v1/healthz`, `/v1/metrics`, `/v1/license`.
+   Роли tenant-токенов (T-06): `director` — агрегаты и управление,
+   `participant` — только свои данные, `lawyer` — только legal/snapshots;
+   отказы и выход за `participant_id` пишутся в аудит.
 5. **Append-only.** Интервалы, закрытые `day_records`, корректировки
    `adjustments` и снапшоты не перезаписываются; правки — только
    компенсирующими записями (ADR-0021).

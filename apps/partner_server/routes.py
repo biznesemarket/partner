@@ -109,12 +109,20 @@ class Principal:
     tenant_id=None — глобальный административный токен (legacy PARTNER_API_TOKEN)
     или demo-режим: фильтрация по tenant не выполняется. tenant-токены задаются
     картой PARTNER_TENANT_TOKENS = {"<token>": "tenant_id"} (или объектом
-    {"tenant_id": ..., "role": ...}).
+    {"tenant_id": ..., "role": ..., "participant_id": ...}).
+
+    Роли (T-06): admin (глобальный токен), director, participant, lawyer;
+    demo — локальный режим без токена. participant обязан иметь participant_id,
+    иначе доступ к данным закрыт (fail closed).
     """
 
     token: str
     tenant_id: str | None = None
     role: str = "director"
+    participant_id: str | None = None
+
+
+TENANT_ROLES = ("director", "participant", "lawyer")
 
 
 def _tenant_tokens() -> dict[str, dict]:
@@ -140,9 +148,18 @@ def _tenant_tokens() -> dict[str, dict]:
         if isinstance(value, str):
             tokens[str(token)] = {"tenant_id": value, "role": "director"}
         elif isinstance(value, dict):
+            role = value.get("role") or "director"
+            if role not in TENANT_ROLES:
+                raise HTTPException(
+                    500,
+                    {"code": "tenant_tokens_invalid",
+                     "detail": f"роль {role!r} недопустима для tenant-токена: "
+                               f"{', '.join(TENANT_ROLES)}"},
+                )
             tokens[str(token)] = {
                 "tenant_id": value.get("tenant_id"),
-                "role": value.get("role") or "director",
+                "role": role,
+                "participant_id": value.get("participant_id"),
             }
         else:
             raise HTTPException(
@@ -185,6 +202,7 @@ def require_token(
                     token=supplied,
                     tenant_id=bound or x_partner_tenant,
                     role=meta.get("role") or "director",
+                    participant_id=meta.get("participant_id"),
                 )
         if settings.api_token and supplied and hmac.compare_digest(
             supplied, settings.api_token
@@ -199,6 +217,67 @@ def require_token(
 
     # demo-режим без токена: только local; tenant-заголовок допускается для тестов
     return Principal(token=supplied, tenant_id=x_partner_tenant, role="demo")
+
+
+def require_roles(*roles: str):
+    """T-06: зависимость «роль входит в разрешенные».
+
+    admin (глобальный токен) и demo (локальный режим) проходят всегда;
+    отказ пишется в audit как access.denied и возвращает 403 role_denied.
+    """
+    allowed = frozenset(roles)
+
+    def dependency(
+        principal: Principal = Depends(require_token),
+        db: Session = Depends(get_db),
+    ) -> Principal:
+        if principal.role in ("admin", "demo") or principal.role in allowed:
+            return principal
+        audit.record(
+            db,
+            actor=f"role:{principal.role}",
+            entity="api",
+            entity_id="role",
+            action="access.denied",
+            new_value={"role": principal.role, "allowed": sorted(allowed)},
+            tenant_id=principal.tenant_id,
+        )
+        raise HTTPException(
+            403,
+            {
+                "code": "role_denied",
+                "detail": f"роль {principal.role!r} не имеет доступа к этому ресурсу",
+            },
+        )
+
+    return dependency
+
+
+def ensure_participant_scope(
+    db: Session, principal: Principal, participant_id: str
+) -> None:
+    """T-06: participant видит только свои данные; остальные роли — по tenant."""
+    if principal.role != "participant":
+        return
+    if principal.participant_id and principal.participant_id == participant_id:
+        return
+    audit.record(
+        db,
+        actor=principal.participant_id or "participant",
+        entity="api",
+        entity_id="participant_scope",
+        action="access.denied",
+        new_value={"requested_participant": participant_id},
+        meta={"role": principal.role},
+        tenant_id=principal.tenant_id,
+    )
+    raise HTTPException(
+        403,
+        {
+            "code": "participant_scope_denied",
+            "detail": "участник может читать только свои данные",
+        },
+    )
 
 
 def ensure_project_tenant(
@@ -257,6 +336,8 @@ def check_tenant_isolation(
 ) -> models.Participant:
     """M5.3: deny by default. Кросс-тенантный запрос → 403 + инцидент в аудите."""
     participant = get_participant_or_404(db, participant_id)
+    if principal is not None:
+        ensure_participant_scope(db, principal, participant_id)
     try:
         service.ensure_same_tenant(project, participant)
         if principal is not None and principal.tenant_id:
@@ -283,6 +364,7 @@ def check_tenant_isolation(
 def ensure_participant_tenant(
     db: Session, participant: models.Participant, principal: Principal
 ) -> None:
+    ensure_participant_scope(db, principal, participant.participant_id)
     if principal.tenant_id and participant.tenant_id != principal.tenant_id:
         audit.incident(
             db,
@@ -369,9 +451,10 @@ def metrics(db: Session = Depends(get_db)):
 def create_session(
     payload: SessionIn,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     existing = db.get(models.Session, payload.session_id)
+    ensure_participant_scope(db, principal, payload.participant_id)
     if existing is not None:
         # Чужой session_id не должен подтверждаться и раскрывать существование.
         existing_project = db.get(models.Project, existing.project_id)
@@ -405,7 +488,7 @@ def post_heartbeat(
     db: Session = Depends(get_db),
     x_partner_device: str | None = Header(default=None),
     x_partner_sign: str | None = Header(default=None),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     # M9 (threat-model §4): подпись устройства HMAC-SHA256 по канонической
     # строке события. Заголовки необязательны при require_device_sign=0;
@@ -415,6 +498,7 @@ def post_heartbeat(
     # v1.2: heartbeat не может писать в сессию чужого tenant.
     session = db.get(models.Session, payload.session_id)
     if session is not None:
+        ensure_participant_scope(db, principal, session.participant_id)
         project = db.get(models.Project, session.project_id)
         if project is not None:
             ensure_project_tenant(db, project, principal)
@@ -487,7 +571,7 @@ class DeviceIn(BaseModel):
 def register_device(
     payload: DeviceIn,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     """Регистрация устройства агента: секрет выдается ОДИН раз (не читается повторно).
 
@@ -523,7 +607,7 @@ def register_device(
 def revoke_device(
     device_id: str,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     device = db.get(models.Device, device_id)
     if device is None:
@@ -544,7 +628,7 @@ def revoke_device(
 def list_devices(
     participant_id: str = Query(...),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     """Список устройств участника — без секретов (они не хранятся в открытом виде для витрины)."""
     participant = get_participant_or_404(db, participant_id)
@@ -564,7 +648,7 @@ def get_day(
     participant_id: str,
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     # Аудит F1 (P0): суммы/доли дня — персональные финансовые данные;
     # читаются только с Bearer (data-model.md §аутентификация). Открыты
@@ -582,7 +666,7 @@ def close_day(
     participant_id: str,
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     check_tenant_isolation(db, project, participant_id, principal)
     try:
@@ -606,7 +690,7 @@ def explain_day(
     participant_id: str,
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     """Объяснение начисления: интервалы, union-секунды по классам, капы, версии."""
     check_tenant_isolation(db, project, participant_id, principal)
@@ -642,7 +726,7 @@ def status_summary(
     month: str | None = Query(default=None, pattern="^\\d{4}-\\d{2}$"),
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    _: None = Depends(require_token),
+    _: Principal = Depends(require_roles("director")),
 ):
     """Сводка директора: суммы по участникам за месяц (по умолчанию текущий)."""
     month = month or _current_month(project)
@@ -695,7 +779,7 @@ def status_month(
     month: str | None = Query(default=None, pattern="^\\d{4}-\\d{2}$"),
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     check_tenant_isolation(db, project, participant_id, principal)
     rows = db.execute(
@@ -750,7 +834,7 @@ def list_flags(
     limit: int = Query(default=1000, ge=1, le=5000),
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    _: None = Depends(require_token),
+    _: Principal = Depends(require_roles("director")),
 ):
     """Флаги закрытых дней для дашборда директора (tenant/project-scoped).
 
@@ -817,7 +901,7 @@ def digest_day(
     participant_id: str,
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     """Дайджест закрытого дня: числа воспроизводимы из БД (DoD M6)."""
     check_tenant_isolation(db, project, participant_id, principal)
@@ -834,7 +918,7 @@ def digest_month(
     participant_id: str,
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     """Месячный дайджест: часы, вклад, доли, остаток пула, pending."""
     check_tenant_isolation(db, project, participant_id, principal)
@@ -851,7 +935,7 @@ def open_dispute(
     payload: DisputeIn,
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     """Спор дня: разработчик помечает день (и опционально интервалы)."""
     check_tenant_isolation(db, project, payload.participant_id, principal)
@@ -874,7 +958,7 @@ def resolve_dispute(
     dispute_id: str,
     payload: DisputeResolveIn,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director")),
 ):
     """Решение директора в окне 3 дней; approved → adjustment (append-only)."""
     dispute = db.get(models.Dispute, dispute_id)
@@ -907,7 +991,7 @@ def list_disputes(
     month: str | None = Query(default=None, pattern="^\\d{4}-\\d{2}$"),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director")),
 ):
     """Список споров (директор): фильтр по статусу, проекту и месяцу дня."""
     project = scoped_project(db, project_id, principal)
@@ -948,10 +1032,13 @@ def notifications_list(
     project_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "participant")),
 ):
     """Журнал доставки дайджестов: канал, статус, attempts/last_error (M8.4)."""
     project = scoped_project(db, project_id, principal)
+    if principal.role == "participant":
+        recipient = principal.participant_id
+        ensure_participant_scope(db, principal, recipient or "")
     stmt = select(models.Notification).order_by(models.Notification.created_at.desc()).limit(limit)
     if principal.tenant_id:
         stmt = stmt.where(models.Notification.tenant_id == principal.tenant_id)
@@ -989,7 +1076,7 @@ def notifications_list(
 def create_policy_version(
     payload: PolicyIn,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director")),
 ):
     """Новая версия политики: иммутабельна, действует с даты (R-4, threat-model §3)."""
     project = db.get(models.Project, payload.project_id)
@@ -1042,7 +1129,7 @@ def create_policy_version(
 def create_rate_version(
     payload: RateVersionIn,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director")),
 ):
     """Новая версия ставки. Заднее число запрещено (V-04, R-2)."""
     policy = db.get(models.Policy, payload.policy_id)
@@ -1104,7 +1191,7 @@ def audit_list(
     project_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director")),
 ):
     """Журнал действий и инцидентов (директор). Append-only."""
     project = scoped_project(db, project_id, principal)
@@ -1125,6 +1212,8 @@ def audit_list(
                 "entity": e.entity,
                 "entity_id": e.entity_id,
                 "action": e.action,
+                "old_value": e.old_value,
+                "new_value": e.new_value,
                 "meta": e.meta,
             }
             for e in entries
@@ -1146,13 +1235,13 @@ def _legal_status(db: Session) -> dict:
 
 
 @router.get("/legal", tags=["legal"])
-def legal_status(db: Session = Depends(get_db), _: None = Depends(require_token)):
+def legal_status(db: Session = Depends(get_db), _: Principal = Depends(require_roles("director", "lawyer"))):
     """Статус юридического модуля и гейты G-01…G-08 (legal-module.md §4)."""
     return _legal_status(db)
 
 
 @router.post("/legal/gates/{gate_id}", tags=["legal"])
-def legal_set_gate(gate_id: str, payload: GateIn, db: Session = Depends(get_db), _: None = Depends(require_token)):
+def legal_set_gate(gate_id: str, payload: GateIn, db: Session = Depends(get_db), _: Principal = Depends(require_roles("lawyer"))):
     """Юрист снимает (done) или возвращает (open) гейт; done требует evidence."""
     try:
         entry = legal.set_gate(
@@ -1176,7 +1265,7 @@ def legal_set_gate(gate_id: str, payload: GateIn, db: Session = Depends(get_db),
 
 
 @router.post("/legal/enable", tags=["legal"])
-def legal_enable(payload: ActorIn, db: Session = Depends(get_db), _: None = Depends(require_token)):
+def legal_enable(payload: ActorIn, db: Session = Depends(get_db), _: Principal = Depends(require_roles("lawyer"))):
     """Включение legal.enabled: true — только при снятых G-01…G-08 (M7.3).
 
     Незакрытые гейты → 422 legal_gates_not_cleared с перечнем.
@@ -1207,7 +1296,7 @@ def legal_enable(payload: ActorIn, db: Session = Depends(get_db), _: None = Depe
 
 
 @router.post("/snapshots/{month}", tags=["legal"])
-def snapshot_month(month: str, payload: ActorIn, project: models.Project = Depends(get_project), db: Session = Depends(get_db), _: None = Depends(require_token)):
+def snapshot_month(month: str, payload: ActorIn, project: models.Project = Depends(get_project), db: Session = Depends(get_db), _: Principal = Depends(require_roles("director"))):
     """Месячный снапшот долей (M7.1): вклад ₽ и доли участников, sha256 + git-якорь.
 
     Иммутабелен: повтор с тем же содержимым — duplicate, с другим —
@@ -1235,7 +1324,7 @@ def snapshots_list(
     project_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "lawyer")),
 ):
     """Список месячных снапшотов (директор/юрист) в рамках tenant/project."""
     project = scoped_project(db, project_id, principal)
@@ -1265,7 +1354,7 @@ def snapshots_list(
 def snapshot_detail(
     snapshot_id: str,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_token),
+    principal: Principal = Depends(require_roles("director", "lawyer")),
 ):
     """Снапшот с payload и подписываемым листом (render)."""
     s = db.get(models.Snapshot, snapshot_id)
@@ -1283,7 +1372,7 @@ def snapshot_detail(
 
 
 @router.post("/legal/export", tags=["legal"])
-def legal_export(payload: ActorIn, project: models.Project = Depends(get_project), db: Session = Depends(get_db), _: None = Depends(require_token)):
+def legal_export(payload: ActorIn, project: models.Project = Depends(get_project), db: Session = Depends(get_db), _: Principal = Depends(require_roles("director", "lawyer"))):
     """Пакет юристу (M7.2): политика, снапшоты, гейты, вопросы, шаблоны M7.4.
 
     Без персональных данных; manifest.bundle_sha256 — подписываемый хеш.

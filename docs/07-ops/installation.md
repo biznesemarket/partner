@@ -41,10 +41,17 @@ docker compose -f deploy/docker-compose.yml ps   # migrate = Exit 0, server = he
 
 Мультитенантность v1.2: `PARTNER_TENANT_TOKENS` — JSON-карта
 `{"<token>": "<tenant_id>"}` (или `{"<token>": {"tenant_id": "...",
-"role": "director"}}`). Токен из карты видит только проекты, дни, споры,
-уведомления, аудит и снапшоты своего tenant; `PARTNER_API_TOKEN` остается
-глобальным административным токеном. Без карты поведение прежнее:
-один токен на установку.
+"role": "director", "participant_id": "..."}}`). Токен из карты видит только
+проекты, дни, споры, уведомления, аудит и снапшоты своего tenant;
+`PARTNER_API_TOKEN` остается глобальным административным токеном. Без карты
+поведение прежнее: один токен на установку.
+
+Роли (T-06): `director` (по умолчанию) — сводка, флаги, споры, аудит,
+снапшоты, чтение legal; `participant` (обязателен `participant_id`) — только
+свои сессии, дни, статус, устройства и уведомления, чужие → 403
+`participant_scope_denied`; `lawyer` — legal read, гейты G-01…G-08, enable и
+чтение снапшотов, без данных времени. Отказы пишутся в аудит как
+`access.denied`. Роль `participant` без `participant_id` закрыта (fail closed).
 
 Проверка:
 
@@ -55,8 +62,9 @@ docker compose logs server | grep dayclose  # планировщик закры�
 ```
 
 Кабинет директора: `http://localhost:8080/dashboard` (v1.3). Введите
-`PARTNER_API_TOKEN` или tenant-токен; при пустом токене сервер работает
-в демо-режиме и доступна кнопка «Демо без токена».
+`PARTNER_API_TOKEN` или tenant-токен роли `director`/`admin`; при пустом
+токене сервер работает в демо-режиме и доступна кнопка «Демо без токена».
+Participant-токен видит только свои данные и не откроет сводку/флаги/споры.
 
 Восстановление из бэкапа отрепетировать сразу после установки:
 `docker compose exec backup /srv/scripts/restore_check.sh` (runbook §5.1).
