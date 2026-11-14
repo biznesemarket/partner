@@ -159,6 +159,9 @@ jobs:
           python -m venv /tmp/delivery-venv
           /tmp/delivery-venv/bin/pip install --upgrade pip
           /tmp/delivery-venv/bin/pip install /tmp/delivery/*.whl
+          mkdir -p /tmp/delivery-client
+          cp repo-pack/policy.example.yaml /tmp/delivery-client/policy.yaml
+          cd /tmp/delivery-client
           /tmp/delivery-venv/bin/partner day --demo > /tmp/delivery/day.out
           test -s /tmp/delivery/day.out
       - name: "Чистый репозиторий клиента: policy + AGENTS + workflow"
