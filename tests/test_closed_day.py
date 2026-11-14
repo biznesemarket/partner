@@ -112,6 +112,28 @@ def test_cumulative_late_events_add_one_delta_each(client, factory):
         assert s.query(models.Adjustment).count() == 2
 
 
+def test_revert_after_compensation_adds_reverse_adjustment(client, factory):
+    """Возврат данных к прежнему расчету — обратная компенсация, не дубль."""
+    client.post("/v1/heartbeats", json=hb("e1", 10, 14, 0))
+    close(client)
+    client.post("/v1/heartbeats", json=hb("e2", 15, 16, 1))
+    first = close(client)
+    assert first["delta_cents"] == 50_000
+
+    with factory() as s:
+        s.query(models.Heartbeat).filter(models.Heartbeat.event_id == "e2").delete()
+        s.query(models.Interval).filter(models.Interval.interval_id == "e2").delete()
+        s.commit()
+
+    revert = close(client)
+    assert revert["status"] == "compensated"
+    assert revert["delta_cents"] == -50_000
+    day = client.get(f"/v1/days/{DATE}", params={"participant_id": "dev1"}).json()
+    assert day["effective_amount_cents"] == 200_000
+    with factory() as s:
+        assert s.query(models.Adjustment).count() == 2
+
+
 def test_digest_shows_compensation_without_mismatch(client):
     client.post("/v1/heartbeats", json=hb("e1", 10, 14, 0))
     close(client)

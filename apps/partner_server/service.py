@@ -480,10 +480,19 @@ def _payload_sha(participant_id: str, date_iso: str, computed: dict) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _recompute_adjustment_id(day_id: str, sha: str) -> str:
-    """Детерминированный id компенсации пересчета: идемпотентность (ADR-0021)."""
-    digest = hashlib.sha256(f"{day_id}|{sha}".encode("utf-8")).hexdigest()[:24]
-    return f"adj-recalc-{digest}"
+def _recompute_adjustment_id(
+    day_id: str, sha: str, effective_cents: int | None = None
+) -> str:
+    """Детерминированный id компенсации пересчета: идемпотентность (ADR-0021).
+
+    Базовый ключ — day_id|sha. Если та же компенсация уже была, но база
+    успела измениться (возврат данных после другой компенсации), добавляется
+    суффикс эффективной суммы — отдельная обратная запись.
+    """
+    key = f"{day_id}|{sha}"
+    if effective_cents is not None:
+        key = f"{key}|{effective_cents}"
+    return f"adj-recalc-{hashlib.sha256(key.encode('utf-8')).hexdigest()[:24]}"
 
 
 def _compensate_reclose(
@@ -502,14 +511,15 @@ def _compensate_reclose(
     adjustments = sess.scalars(
         select(models.Adjustment).where(models.Adjustment.day_id == rec.day_id)
     ).all()
-    adj_id = _recompute_adjustment_id(rec.day_id, sha)
-    existing = sess.get(models.Adjustment, adj_id)
-    if existing is not None:
+    effective_cents = rec.amount_cents + sum(a.delta_cents for a in adjustments)
+    base_id = _recompute_adjustment_id(rec.day_id, sha)
+    existing = sess.get(models.Adjustment, base_id)
+    if existing is not None and computed["amount_cents"] == effective_cents:
         result = get_day(sess, project, rec.participant_id, rec.date)
         result.update(
             {
                 "status": "duplicate_compensation",
-                "adjustment_id": adj_id,
+                "adjustment_id": base_id,
                 "delta_cents": existing.delta_cents,
                 "recomputed_amount_cents": computed["amount_cents"],
                 "recomputed_paid_seconds": computed["paid_seconds"],
@@ -518,13 +528,38 @@ def _compensate_reclose(
         )
         return result
 
-    effective_cents = rec.amount_cents + sum(a.delta_cents for a in adjustments)
-    if sha == rec.sha256_input and computed["amount_cents"] == effective_cents:
+    if (
+        existing is None
+        and sha == rec.sha256_input
+        and computed["amount_cents"] == effective_cents
+    ):
         result = get_day(sess, project, rec.participant_id, rec.date)
         result.update(
             {
                 "status": "duplicate",
                 "sha256": rec.sha256_input,
+                "recomputed_sha256": sha,
+            }
+        )
+        return result
+
+    # База изменилась после прежней компенсации (например, возврат данных):
+    # отдельный id, чтобы append-only история сохранила обратную запись.
+    adj_id = (
+        base_id
+        if existing is None
+        else _recompute_adjustment_id(rec.day_id, sha, effective_cents)
+    )
+    already = sess.get(models.Adjustment, adj_id)
+    if already is not None:
+        result = get_day(sess, project, rec.participant_id, rec.date)
+        result.update(
+            {
+                "status": "duplicate_compensation",
+                "adjustment_id": adj_id,
+                "delta_cents": already.delta_cents,
+                "recomputed_amount_cents": computed["amount_cents"],
+                "recomputed_paid_seconds": computed["paid_seconds"],
                 "recomputed_sha256": sha,
             }
         )

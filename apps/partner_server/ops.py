@@ -94,8 +94,8 @@ def collect(sess: OrmSession) -> dict[str, float]:
             metrics["partner_day_close_delay_seconds"] = max(0.0, delay)
 
     # Незакрытые дни с интервалами старше грейса — алерт (runbook §алерты).
-    # День = participant|date в поясе проекта (тот же day_id, что в
-    # day_records). MVP-масштаб (десятки участников) — считаем в Python.
+    # День = project|participant|date в поясе проекта; для подсчета достаточно
+    # пары participant/date + project_id. MVP-масштаб — считаем в Python.
     grace_deadline = now_utc - timedelta(hours=settings.grace_hours)
     rows = sess.execute(
         select(

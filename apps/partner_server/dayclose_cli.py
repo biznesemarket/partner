@@ -60,7 +60,9 @@ def main(argv: list[str] | None = None, db_url: str | None = None) -> int:
                         from . import service
 
                         service.close_day(sess, project, participant_id, args.date)
-                        closed_total.append(f"{participant_id}|{args.date}")
+                        closed_total.append(
+                            f"{project.project_id}|{participant_id}|{args.date}"
+                        )
                     except Exception as err:  # noqa: BLE001
                         print(
                             f"! {participant_id}|{args.date}: {err}",
