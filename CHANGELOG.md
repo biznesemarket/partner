@@ -56,6 +56,17 @@
 
 ## [Незапланировано]
 
+### RBAC-роли director/participant/lawyer (T-06, 2026-11-14)
+
+- tenant-токены принимают `role` и `participant_id`; допустимые роли —
+  `director`, `participant`, `lawyer` (неизвестная роль — 500 fail closed).
+- `require_roles` закрывает агрегаты/споры/аудит/снапшоты/legal по матрице;
+  `participant` видит только свои дни/устройства/статус/уведомления,
+  чужие → 403 `participant_scope_denied`; `lawyer` управляет только
+  legal-гейтами и читает снапшоты.
+- Отказы ролей и выход за participant scope пишутся в audit `access.denied`;
+  `/v1/audit` теперь отдает `old_value`/`new_value`.
+
 ### Транспорт agent_chat (B-03, 2026-11-14)
 
 - `notify.py`: канал `agent_chat` всегда пишет в журнал; при
