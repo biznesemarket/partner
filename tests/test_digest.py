@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from conftest import moscow_local
 
-from partner_server import models
+from partner_server import models, service
 
 DATE = "2026-11-12"
 MONTH = "2026-11"
@@ -49,7 +49,7 @@ def test_day_digest_reproducible_from_db(client, factory):
 
     # DoD: числа дайджеста равны записи БД (закрытый день — append-only)
     with factory() as sess:
-        rec = sess.get(models.DayRecord, f"dev1|{DATE}")
+        rec = service.find_day_record(sess, sess.get(models.Project, "partner"), "dev1", DATE)
         assert d["paid_seconds"] == rec.paid_seconds
         assert d["amount_cents"] == rec.amount_cents
         assert d["amount_rub"] == "3300"
@@ -84,7 +84,7 @@ def test_day_digest_mismatch_detected(client, factory):
     """Порча day_record обнаруживается: пересчет расходится с записью."""
     seed_and_close(client)
     with factory() as sess:
-        rec = sess.get(models.DayRecord, f"dev1|{DATE}")
+        rec = service.find_day_record(sess, sess.get(models.Project, "partner"), "dev1", DATE)
         rec.amount_cents = 999_999
         sess.commit()
     r = client.get(f"/v1/digest/day/{DATE}", params={"participant_id": "dev1"})

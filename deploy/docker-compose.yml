@@ -36,6 +36,8 @@ x-server-env: &server-env
   # v1.1 коннекторы: секрет вебхука (общий или JSON по проектам)
   PARTNER_CONNECTOR_SECRET: ${PARTNER_CONNECTOR_SECRET:-}
   PARTNER_CONNECTOR_SECRETS: ${PARTNER_CONNECTOR_SECRETS:-}
+  # v1.2 tenant/RBAC: карта токен → tenant (JSON); пусто — legacy API-токен
+  PARTNER_TENANT_TOKENS: ${PARTNER_TENANT_TOKENS:-}
 
 services:
   db:

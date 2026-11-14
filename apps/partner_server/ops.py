@@ -94,13 +94,14 @@ def collect(sess: OrmSession) -> dict[str, float]:
             metrics["partner_day_close_delay_seconds"] = max(0.0, delay)
 
     # Незакрытые дни с интервалами старше грейса — алерт (runbook §алерты).
-    # День = participant|date в поясе проекта (тот же day_id, что в
-    # day_records). MVP-масштаб (десятки участников) — считаем в Python.
+    # День = project|participant|date в поясе проекта; для подсчета достаточно
+    # пары participant/date + project_id. MVP-масштаб — считаем в Python.
     grace_deadline = now_utc - timedelta(hours=settings.grace_hours)
     rows = sess.execute(
         select(
             models.Interval.end_utc,
             models.Session.participant_id,
+            models.Session.project_id,
             models.Project.timezone,
         )
         .join(models.Session, models.Interval.session_id == models.Session.session_id)
@@ -111,17 +112,24 @@ def collect(sess: OrmSession) -> dict[str, float]:
     tz_cache: dict[str, ZoneInfo] = {}
     # Аудит-фикс F8 (P2): дедупликация (participant, дата) ДО sess.get —
     # раньше get выполнялся на каждую строку интервалов (N+1 по журналу).
-    day_candidates: set[tuple[str, str, str]] = set()
-    for end_raw, participant_id, project_tz in rows:
+    day_candidates: set[tuple[str, str, str, str]] = set()
+    for end_raw, participant_id, project_id, project_tz in rows:
         end_dt = _parse_iso(end_raw)
         if end_dt is None or end_dt >= grace_deadline:
             continue
         tz = tz_cache.setdefault(project_tz, ZoneInfo(project_tz))
-        day_candidates.add((participant_id, project_tz, end_dt.astimezone(tz).date().isoformat()))
-    for participant_id, project_tz, date_iso in day_candidates:
-        day_id = f"{participant_id}|{date_iso}"
-        if sess.get(models.DayRecord, day_id) is None:
-            overdue_days.add(day_id)
+        day_candidates.add(
+            (project_id, participant_id, project_tz, end_dt.astimezone(tz).date().isoformat())
+        )
+    for project_id, participant_id, _project_tz, date_iso in day_candidates:
+        if sess.scalars(
+            select(models.DayRecord.day_id)
+            .where(models.DayRecord.project_id == project_id)
+            .where(models.DayRecord.participant_id == participant_id)
+            .where(models.DayRecord.date == date_iso)
+            .where(models.DayRecord.closed == 1)
+        ).first() is None:
+            overdue_days.add(f"{project_id}|{participant_id}|{date_iso}")
     metrics["partner_days_open_overdue"] = len(overdue_days)
 
 

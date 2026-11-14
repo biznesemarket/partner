@@ -46,3 +46,115 @@ jobs:
         with:
           name: docs-site-${{ matrix.os }}
           path: docs-site/
+
+  postgres-smoke:
+    name: postgres-smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: partner
+          POSTGRES_USER: partner
+          POSTGRES_PASSWORD: partner
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U partner -d partner"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PARTNER_DB_URL: postgresql+psycopg://partner:partner@localhost:5432/partner
+      PARTNER_API_TOKEN: ci-token
+      PARTNER_SCHEDULER: "0"
+      PARTNER_GRACE_HOURS: "24"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Установить пакет (CLI + сервер)
+        run: pip install -e ".[dev,server]"
+      - name: Миграции PostgreSQL
+        run: |
+          alembic upgrade head
+          alembic check
+      - name: Seed tenant/project/participant/policy
+        run: python -m partner_server.seed
+      - name: "Smoke: сервер, heartbeat, закрытие и чтение дня"
+        run: |
+          python -m uvicorn partner_server.main:app --host 127.0.0.1 --port 8080 &
+          SERVER_PID=$!
+          trap "kill $SERVER_PID" EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/healthz
+          echo
+          AUTH="Authorization: Bearer ci-token"
+          curl -fsS -X POST http://127.0.0.1:8080/v1/sessions \
+            -H "$AUTH" -H "Content-Type: application/json" \
+            -d '{"session_id":"s-smoke","participant_id":"dev1","project_id":"partner","task_ref":"T-SMOKE","branch":"dev/dev1/smoke","started_at_utc":"2026-11-12T00:00:00+00:00"}'
+          curl -fsS -X POST http://127.0.0.1:8080/v1/heartbeats \
+            -H "$AUTH" -H "Content-Type: application/json" \
+            -d '{"event_id":"smoke-1","session_id":"s-smoke","seq":0,"cls":"active_human","start_utc":"2026-11-12T07:00:00+00:00","end_utc":"2026-11-12T11:00:00+00:00","received_at_utc":"2026-11-12T11:00:01+00:00","signals":{"input_events":10,"focus":1,"tool_calls":1}}'
+          curl -fsS -X POST "http://127.0.0.1:8080/v1/days/2026-11-12/close?participant_id=dev1" \
+            -H "$AUTH" | python -c "import json,sys; d=json.load(sys.stdin); assert d['amount_cents']==200000, d; assert d['closed'] is True; print('close OK', d['day_id'])"
+          curl -fsS "http://127.0.0.1:8080/v1/days/2026-11-12?participant_id=dev1" \
+            -H "$AUTH" | python -c "import json,sys; d=json.load(sys.stdin); assert d['closed'] is True and d['amount_cents']==200000, d; print('read OK', d['amount_cents'])"
+
+  docker-build:
+    name: docker-build
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci-password
+      PARTNER_API_TOKEN: ci-token
+      PARTNER_IMAGE: partner:ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Проверить compose-конфигурацию
+        run: docker compose -f deploy/docker-compose.yml config >/dev/null
+      - name: Собрать образ
+        run: docker build -f deploy/Dockerfile -t partner:ci .
+      - name: Проверить импорт сервера в образе
+        run: docker run --rm partner:ci python -c "import partner_server.main; print('image OK')"
+
+  package-smoke:
+    name: package-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Собрать wheel и sdist
+        run: |
+          pip install build
+          python -m build
+      - name: Установить wheel в чистое окружение
+        run: |
+          python -m venv /tmp/pkg-venv
+          /tmp/pkg-venv/bin/pip install --upgrade pip
+          /tmp/pkg-venv/bin/pip install dist/*.whl
+          /tmp/pkg-venv/bin/partner --help >/dev/null
+          /tmp/pkg-venv/bin/python -c "import partner_cli, partner_agent_kit, partner_connectors; print('wheel OK')"
+      - name: "Чистый репозиторий клиента: policy + AGENTS + workflow"
+        run: |
+          rm -rf /tmp/client && mkdir -p /tmp/client/.github/workflows
+          cp repo-pack/policy.example.yaml /tmp/client/policy.yaml
+          cp repo-pack/AGENTS.block.md /tmp/client/AGENTS.md
+          cp repo-pack/workflows/partner-policy-check.yml /tmp/client/.github/workflows/
+          cd /tmp/client
+          /tmp/pkg-venv/bin/partner day --demo > day.out
+          test -s day.out
+          /tmp/pkg-venv/bin/python -m partner_cli.policy_lint policy.yaml --as-of 2026-11-14
+          grep -q "BEGIN PARTNER BLOCK" AGENTS.md
+          grep -q "END PARTNER BLOCK" AGENTS.md
+          echo "clean client repo OK"
+      - name: Артефакт поставки
+        uses: actions/upload-artifact@v4
+        with:
+          name: partner-tracker-dist
+          path: dist/

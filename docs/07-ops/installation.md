@@ -26,7 +26,7 @@
 mkdir -p /opt/partner && cd /opt/partner
 # поставка пакета подписки (ADR-0018): распаковать каталог deploy/
 cp deploy/.env.example deploy/.env && $EDITOR deploy/.env   # только секреты
-export PARTNER_IMAGE=partner:1.0.0
+export PARTNER_IMAGE=partner:1.2.0
 docker compose -f deploy/docker-compose.yml up -d
 docker compose -f deploy/docker-compose.yml ps   # migrate = Exit 0, server = healthy
 ```
@@ -38,6 +38,13 @@ docker compose -f deploy/docker-compose.yml ps   # migrate = Exit 0, server = he
 `PARTNER_CONNECTOR_SECRETS` (JSON `project_id → секрет`) — без секрета
 вебхуки возвращают 503. URL вебхука: `https://<host>/v1/connectors/github/webhook`
 (аналогично `forgejo`/`gitea`).
+
+Мультитенантность v1.2: `PARTNER_TENANT_TOKENS` — JSON-карта
+`{"<token>": "<tenant_id>"}` (или `{"<token>": {"tenant_id": "...",
+"role": "director"}}`). Токен из карты видит только проекты, дни, споры,
+уведомления, аудит и снапшоты своего tenant; `PARTNER_API_TOKEN` остается
+глобальным административным токеном. Без карты поведение прежнее:
+один токен на установку.
 
 Проверка:
 
@@ -52,10 +59,28 @@ docker compose logs server | grep dayclose  # планировщик закры�
 
 ## 3. Установка CLI
 
+Пакет `partner-tracker` поставляется одним из способов:
+
+1. **Приватный PyPI-индекс** (рекомендуется для организаций):
+   ```bash
+   pip install --index-url https://<user>:<token>@pypi.example/partner/simple partner-tracker
+   ```
+2. **Wheel-артефакт релиза** (GitHub Release приватного репозитория вендора):
+   ```bash
+   pip install https://github.com/biznesemarket/partner/releases/download/v1.2.0/partner_tracker-1.2.0-py3-none-any.whl
+   ```
+   Для приватного репозитория используйте токен с доступом к releases или
+   скачайте артефакт и установите локальный файл.
+3. **Локальная разработка продукта**: `pip install -e ".[dev,server]"`.
+
 ```bash
-pip install partner-tracker   # в реальной поставке; сейчас: pip install -e .
 partner init                  # мастер настройки (docs/00-start/quickstart.md)
 ```
+
+CI клиента (`repo-pack/workflows/partner-policy-check.yml`) берет адрес
+поставки из секретов `PARTNER_TRACKER_WHEEL` (URL wheel) или
+`PARTNER_TRACKER_INDEX_URL` (приватный индекс); без них — публичный
+`pip install partner-tracker`.
 
 Прототип может работать без сервера: CLI держит SQLite в `./data/partner.sqlite3`
 (схема `apps/partner_cli/schema.sql`), это режим демо и оценки.

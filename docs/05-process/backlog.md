@@ -29,16 +29,16 @@
 | B-02 | ~~Нет `partner-connector-*` (GitHub/Forgejo/Gitea): ветки, PR, задачи, вебхуки~~ | закрыто в v1.1: вебхуки push/PR/issues, `repo_facts`, привязка сессий, backfill | P0 |
 | B-03 | Нет транспорта `agent_chat`: канал пишет только в журнал сервера | дайджест не доставляется в чат агента автоматически | P1 |
 | B-04 | ~~Флаг `no_output` описан в time-accounting.md и connectors.md, но не реализован~~ | закрыто в v1.1: сигналы tool_calls + факты commit/pull_request; тесты | P1 |
-| B-05 | Нет публикации пакета `partner-tracker` (PyPI/приватный индекс) | `repo-pack/workflows` и quickstart ссылаются на несуществующую установку | P1 |
-| B-06 | Нет живого прогона PostgreSQL/Docker Compose в CI | миграции проверены offline и SQLite; риск PG-специфичных ошибок | P1 |
+| B-05 | ~~Нет публикации пакета `partner-tracker` (PyPI/приватный индекс)~~ | закрыто v1.2: release-workflow собирает wheel/sdist, CI `package-smoke`, repo-pack берет `PARTNER_TRACKER_WHEEL`/`INDEX_URL` | P1 |
+| B-06 | ~~Нет живого прогона PostgreSQL/Docker Compose в CI~~ | закрыто v1.2: job `postgres-smoke` (миграции, seed, uvicorn, /healthz, закрытие дня) и `docker-build` | P1 |
 
 ## 3. Технический долг и риски
 
 | # | Риск | Где | Мера |
 |---|---|---|---|
-| T-01 | `status/summary`, `disputes`, `notifications`, `audit`, `snapshots` не фильтруются по tenant/project | `routes.py`, модели без `project_id` | добавить tenant-контекст в токен/запросы, `DayRecord.project_id`, тесты изоляции |
-| T-02 | `month_digest` считает остаток пула по всем `day_records` без фильтра проекта | `digest.py` | фильтр по проекту/tenant; тест на два проекта |
-| T-03 | Повторное закрытие дня перезаписывает `day_record` при изменившихся данных | `service.close_day` | решить: запрет после окна или компенсирующая запись; ADR + тест |
+| T-01 | ~~`status/summary`, `disputes`, `notifications`, `audit`, `snapshots` не фильтруются по tenant/project~~ | закрыто v1.2: `PARTNER_TENANT_TOKENS`, `DayRecord.project_id`, project-scoped `day_id`, фильтры и тесты изоляции |
+| T-02 | ~~`month_digest` считает остаток пула по всем `day_records` без фильтра проекта~~ | закрыто v1.2: фильтр `project_id` в месячном дайджесте/снапшоте, тесты |
+| T-03 | ~~Повторное закрытие дня перезаписывает `day_record` при изменившихся данных~~ | закрыто v1.2: ADR-0021, запись неизменяема, компенсации append-only, тесты |
 | T-04 | `legal.yaml` пишется без блокировки | `legal.py` | файловая блокировка/атомарная замена, тест конкурентности |
 | T-05 | `manual_only_policy: bill` бросает `NotImplementedError` | `calc.py` | оставить явный отказ в API или реализовать по ADR |
 | T-06 | Лимиты/пагинация части эндпоинтов и отсутствие RBAC ролей | `routes.py` | роли директор/участник/юрист, аудит доступа |
@@ -63,15 +63,17 @@
 2. [x] `partner-connector-github/forgejo`: вебхуки push/pull_request/issues,
    привязка сессии к задаче/ветке, факты коммитов/PR, backfill через API.
 3. [x] `no_output`-детект на основе signals и фактов коннектора + тесты.
-4. [ ] Docker Compose с PostgreSQL в CI (service container) и smoke-тест
-   (нужна машина с доступом к Debian-репозиториям; issue #5).
+4. [x] Docker Compose с PostgreSQL в CI (service container) и smoke-тест:
+   `postgres-smoke` + `docker-build` в `.github/workflows/partner-ci.yml`
+   (issue #5).
 
 ### v1.2 · Эксплуатация и доверие (P1)
 
-1. Tenant/RBAC-хардening и тесты изоляции.
+1. [x] Tenant/RBAC-хардening и тесты изоляции (#4).
 2. Транспорт `agent_chat` (адаптер к чату агента) и шаблоны уведомлений.
-3. Публикация пакета и repo-pack workflow под реальный индекс.
-4. Инвариант закрытого дня: ADR, запрет перезаписи, компенсации.
+3. [x] Публикация пакета: release-workflow (wheel/sdist), CI `package-smoke`,
+   repo-pack workflow с приватным индексом/артефактом (issue #6).
+4. [x] Инвариант закрытого дня: ADR-0021, запрет перезаписи, компенсации (#7).
 
 ### v1.3 · Витрина (P2)
 

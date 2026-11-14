@@ -491,6 +491,8 @@ def ingest_event(
             "facts": created,
             "linked_sessions": len(linked),
         },
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
     )
     return {
         "status": "accepted",

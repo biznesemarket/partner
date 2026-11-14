@@ -104,7 +104,7 @@ def test_close_day_applies_cash_share(factory, client):
     with factory() as sess:
         project = sess.get(models.Project, "partner")
         res = service.close_day(sess, project, "dev1", "2026-11-12")
-    rec = sess.get(models.DayRecord, "dev1|2026-11-12")
+    rec = sess.get(models.DayRecord, "partner|dev1|2026-11-12")
     assert rec.amount_cents == 200_000  # 4 ч × 500 ₽
     assert rec.cash_cents == 60_000, f"cash 30% от 2000 ₽: {rec.cash_cents}"
     assert rec.equity_cents == 140_000
@@ -121,7 +121,7 @@ def test_close_day_cash_default_zero(factory, client):
     with factory() as sess:
         project = sess.get(models.Project, "partner")
         service.close_day(sess, project, "dev1", "2026-11-12")
-    rec = sess.get(models.DayRecord, "dev1|2026-11-12")
+    rec = sess.get(models.DayRecord, "partner|dev1|2026-11-12")
     assert rec.cash_cents == 0 and rec.equity_cents == rec.amount_cents
 
 
@@ -292,7 +292,8 @@ def test_status_month_decimal_share_sum(factory, client):
         for i, bp in enumerate(["1111111111.1111", "2222222222.2222", "3333333333.3333"]):
             d = f"2026-11-{10 + i:02d}"
             s.add(models.DayRecord(
-                day_id=f"dev1|{d}", participant_id="dev1", date=d, tz="Europe/Moscow",
+                day_id=f"partner|dev1|{d}", participant_id="dev1",
+                project_id="partner", date=d, tz="Europe/Moscow",
                 paid_seconds=3600, amount_cents=50000, cash_cents=0, equity_cents=50000,
                 share_bp=bp, rate_version=1, valuation_version=1, policy_version=1,
                 sha256_input="b" * 64, closed=1,

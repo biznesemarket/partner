@@ -2,6 +2,31 @@
 
 Формат — Keep a Changelog, версии — SemVer.
 
+## [1.2.0] — 2026-11-14
+
+### Добавлено — эксплуатация и доверие (issues #4–#7)
+
+- **Tenant/RBAC (issue #4)**: `PARTNER_TENANT_TOKENS` привязывает Bearer-токен
+  к tenant; `DayRecord.project_id` и project-scoped `day_id` разделяют дни
+  проектов; списки статусов, споров, уведомлений, аудита и снапшотов
+  фильтруются по tenant/project; миграция `0007_tenant_rbac`, тесты изоляции.
+- **Месячный дайджест (T-02)**: остаток пула и дни считаются только по
+  проекту, а не по всем `day_records`.
+- **Инвариант закрытого дня (issue #7, ADR-0021)**: `close_day` не
+  перезаписывает принятый `day_record`; повтор идемпотентен, поздние события
+  создают append-only `adjustment` на дельту, повторная компенсация не
+  дублируется; дайджест показывает пересчет и компенсацию.
+- **PostgreSQL и Docker в CI (issue #5)**: job `postgres-smoke` с
+  `postgres:16` — `alembic upgrade head`/`check`, seed, uvicorn, `/healthz`,
+  закрытие и чтение дня; job `docker-build` — compose config и сборка образа.
+  Добавлен идемпотентный `python -m partner_server.seed`.
+- **Поставка `partner-tracker` (issue #6)**: release-workflow собирает
+  wheel/sdist и создает GitHub Release; CI `package-smoke` ставит wheel в
+  чистое окружение и прогоняет `partner day --demo` + `policy_lint` на
+  чистом репозитории клиента; repo-pack workflow поддерживает
+  `PARTNER_TRACKER_WHEEL`/`PARTNER_TRACKER_INDEX_URL`; `jsonschema` и
+  `tzdata` добавлены в зависимости пакета; версия 1.2.0.
+
 ## [1.1.0] — 2026-11-14
 
 ### Добавлено — сквозной учет (issues #1–#3)

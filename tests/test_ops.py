@@ -96,10 +96,10 @@ def test_reclose_keeps_first_closed_at(client, factory):
     _hb(client, "s1", 0, "active_human", moscow_local(0), moscow_local(6))
     client.post("/v1/days/2026-11-12/close", params={"participant_id": "dev1"})
     with factory() as s:
-        first = s.get(models.DayRecord, "dev1|2026-11-12").closed_at
+        first = s.get(models.DayRecord, "partner|dev1|2026-11-12").closed_at
     client.post("/v1/days/2026-11-12/close", params={"participant_id": "dev1"})
     with factory() as s:
-        assert s.get(models.DayRecord, "dev1|2026-11-12").closed_at == first
+        assert s.get(models.DayRecord, "partner|dev1|2026-11-12").closed_at == first
 
 
 # --- O-05 ----------------------------------------------------------------
@@ -158,7 +158,7 @@ def test_dayclose_cli_closes_open_day(client, factory, tmp_path):
     rc = main([], db_url=f"sqlite:///{tmp_path/'test.db'}")
     assert rc == 0
     with factory() as s:
-        rec = s.get(models.DayRecord, "dev1|2026-11-11")
+        rec = s.get(models.DayRecord, "partner|dev1|2026-11-11")
         assert rec is not None and rec.closed == 1
         assert rec.amount_cents == 300_000  # 6 ч × 500 ₽, golden-числа
         assert rec.closed_at is not None

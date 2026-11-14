@@ -50,6 +50,10 @@ class Settings:
     # Секрет обязателен (connectors.md §5); пустой → webhook 503.
     connector_secret: str = ""
     connector_secrets_json: str = ""
+    # v1.2 tenant/RBAC: карта токен → tenant (строка) или
+    # {"tenant_id": ..., "role": ...}. Пусто — legacy-режим одного
+    # PARTNER_API_TOKEN (глобальный admin).
+    tenant_tokens_json: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -74,6 +78,7 @@ class Settings:
             require_device_sign=os.getenv("PARTNER_REQUIRE_DEVICE_SIGN", "0") == "1",
             connector_secret=os.getenv("PARTNER_CONNECTOR_SECRET", ""),
             connector_secrets_json=os.getenv("PARTNER_CONNECTOR_SECRETS", ""),
+            tenant_tokens_json=os.getenv("PARTNER_TENANT_TOKENS", ""),
         )
 
 

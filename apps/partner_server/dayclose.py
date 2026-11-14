@@ -54,14 +54,12 @@ def close_catch_up(sess: OrmSession, project: models.Project, today_local_date: 
             if end.date().isoformat() < today_local_date:
                 dates.add(end.date().isoformat())
         for date_iso in sorted(dates):
-            rec = sess.get(
-                models.DayRecord, f"{participant_id}|{date_iso}"
-            )
+            rec = service.find_day_record(sess, project, participant_id, date_iso)
             if rec is not None and rec.closed:
                 continue
             try:
                 service.close_day(sess, project, participant_id, date_iso)
-                closed.append(f"{participant_id}|{date_iso}")
+                closed.append(f"{project.project_id}|{participant_id}|{date_iso}")
             except service.DomainError as err:
                 log.warning("не удалось закрыть %s|%s: %s", participant_id, date_iso, err.code)
     return closed

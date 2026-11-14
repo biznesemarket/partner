@@ -174,11 +174,17 @@ class DayRecord(Base):
     """Закрытый день. Append-only: правки — только adjustments."""
 
     __tablename__ = "day_records"
+    __table_args__ = (
+        Index("ix_day_records_project_date", "project_id", "date"),
+    )
 
     day_id: Mapped[str] = mapped_column(String(96), primary_key=True)
     participant_id: Mapped[str] = mapped_column(
         ForeignKey("participants.participant_id"), nullable=False
     )
+    # v1.2 tenant/RBAC: день принадлежит проекту; фильтры статусов/дайджестов
+    # не должны смешивать проекты одного tenant (issue #4).
+    project_id: Mapped[str] = mapped_column(String(64), nullable=False)
     date: Mapped[str] = mapped_column(String(10), nullable=False)  # в поясе проекта
     tz: Mapped[str] = mapped_column(String(64), nullable=False)
     paid_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -284,8 +290,14 @@ class Notification(Base):
     """
 
     __tablename__ = "notifications"
+    __table_args__ = (
+        Index("ix_notifications_tenant_project", "tenant_id", "project_id"),
+    )
 
     notification_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # v1.2 tenant/RBAC: область доставки; NULL — legacy-запись (только admin).
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     # day_digest | month_digest | dispute_opened | dispute_resolved
     recipient: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -315,8 +327,14 @@ class AuditLog(Base):
     """
 
     __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("ix_audit_logs_tenant_project", "tenant_id", "project_id"),
+    )
 
     audit_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # v1.2 tenant/RBAC: область записи; NULL — legacy/системная запись.
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ts: Mapped[str] = mapped_column(String(32), nullable=False)  # ISO UTC
     actor: Mapped[str] = mapped_column(String(128), nullable=False)
     entity: Mapped[str] = mapped_column(String(64), nullable=False)

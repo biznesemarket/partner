@@ -2,10 +2,10 @@
 
 | Поле | Значение |
 |---|---|
-| Версия | 2.1 |
+| Версия | 2.2 |
 | Дата | 2026-11-13 |
 | Заменяет | D5-data-model (перенос + сессии, heartbeat, дни, версии) |
-| Связанные | overview, ADR-0016, ADR-0019, apps/partner_cli/schema.sql (прототип), apps/partner_server/models.py (реализация), migrations/versions/0001_initial.py … 0006_connectors.py |
+| Связанные | overview, ADR-0016, ADR-0019, ADR-0021, apps/partner_cli/schema.sql (прототип), apps/partner_server/models.py (реализация), migrations/versions/0001_initial.py … 0007_tenant_rbac.py |
 | Статус | Реализовано в M4–M6: ORM + миграции Alembic, SQLite (demo) и PostgreSQL (prod) |
 
 ## 1. Реализация M4 и целевая схема
@@ -44,13 +44,13 @@ CLI). Прототипная схема `apps/partner_cli/schema.sql` сохра
 | sessions | сессии работы с агентом | session_id, FK participant/project, task_ref, branch |
 | heartbeats | сырые события активности | event_id (UUID), FK session, seq, received_at |
 | intervals | классифицированные интервалы | interval_id, FK session, class, start/end UTC |
-| day_records | закрытые дни | day_id, participant, date (пояс), paid_seconds, amount_cents, share_bp |
+| day_records | закрытые дни | day_id, project_id (v1.2), participant, date (пояс), paid_seconds, amount_cents, share_bp |
 | adjustments | компенсирующие записи | adjustment_id, FK day_record, reason, approved_by |
 | snapshots | месячные снапшоты | snapshot_id, month, sha256, git_ref |
 | flags | флаги дня (cap_applied, autonomous_cap_applied, no_task_link…) | FK day_record, code, detail |
-| audit_logs | аудит действий и инцидентов (M5): кто, когда, старое/новое | audit_id, ts, actor, entity, action |
+| audit_logs | аудит действий и инцидентов (M5): кто, когда, старое/новое | audit_id, ts, actor, entity, action; v1.2 — tenant_id, project_id |
 | disputes | споры дня (M6): разработчик помечает, директор решает в окне 3 дня | dispute_id, FK day_record, status open/resolved/rejected/expired, window_deadline, interval_refs |
-| notifications | очередь доставки дайджестов/событий (M6): канал, статус, attempts | notification_id, kind, recipient, channel, status pending/sent/failed, payload_json, text |
+| notifications | очередь доставки дайджестов/событий (M6): канал, статус, attempts | notification_id, kind, recipient, channel, status pending/sent/failed, payload_json, text; v1.2 — tenant_id, project_id |
 | connector_events | принятые вебхуки git-платформ (v1.1): доставка, тип, проект | delivery_id, forge, repo, event_type, project_id, payload_json |
 | repo_facts | факты веток/коммитов/PR/issues (v1.1): привязка сессий, no_output | fact_id, project_id, kind, ref, task_ref, branch, occurred_at |
 
@@ -89,6 +89,11 @@ CLI). Прототипная схема `apps/partner_cli/schema.sql` сохра
 
 Аутентификация: Bearer при заданном PARTNER_API_TOKEN; demo-режим без токена
 — только local. Изоляция tenants (403 между организациями) — M5.
+v1.2: `PARTNER_TENANT_TOKENS` привязывает токен к tenant; такой токен видит
+только свой tenant, а `PARTNER_API_TOKEN` остается глобальным admin-токеном
+(необязательный `X-Partner-Tenant` сужает область). Списки статусов,
+споров, уведомлений, аудита и снапшотов фильтруются по tenant/project;
+`day_records.project_id` хранит проект дня, новые `day_id` — project-scoped.
 Подпись устройства — необязательные заголовки X-Partner-Device/X-Partner-Sign;
 PARTNER_REQUIRE_DEVICE_SIGN=1 делает их обязательными (отклонение 422).
 Лицензионный гейт M9.1: license invalid/expired — закрытие дня 402.
@@ -108,9 +113,10 @@ tenants 1──n projects 1──n policies 1──n rate_versions
                             │      └── 1──n intervals
                             ├── n connector_events 1──n repo_facts
 participants 1──n identities ──┘
-participants 1──n day_records 1──n adjustments ←── disputes
+participants 1──n day_records n──1 projects
+                     ├── n adjustments ←── disputes
                      ├── n flags
-                     ├── n notifications (дайджесты и события, M6)
+                     ├── n notifications (tenant/project, v1.2)
                      └── n snapshots (агрегация месяца)
 ```
 
@@ -124,6 +130,8 @@ participants 1──n day_records 1──n adjustments ←── disputes
 | rate/valuation версии не задним числом | проверка в коде + V-04 в policy_lint |
 | Сессия без task_ref | флаг no_task_link, интервалы не оплачиваются |
 | День в поясе проекта | date хранится вместе с tz; разрез по 00:00 пояса |
+| День принадлежит проекту (v1.2) | project_id обязателен; новый day_id = `project\|participant\|date`, legacy `participant\|date` читается через find_day_record |
+| Списки не смешивают tenant/project (v1.2) | tenant-токен → фильтр tenant_id; status/summary, disputes, notifications, audit, snapshots |
 | Один открытый спор на день | проверка в disputes.open_dispute → dispute_already_open |
 | Решение по спору — в окне 3 дней | window_deadline; просрочка → expired + dispute_window_expired |
 | Корректировка не меняет день | adjustment (append-only): эффективная сумма = amount_cents + Σ delta_cents |
@@ -170,6 +178,7 @@ heartbeats:  4f8c…, seq=1187, received_at=2026-11-12T07:00:30Z, signed
 
 | Версия | Дата | Изменение |
 |---|---|---|
+| 2.2 | 2026-11-14 | v1.2 tenant/RBAC: PARTNER_TENANT_TOKENS, DayRecord.project_id, project-scoped day_id, фильтры notifications/audit/snapshots (issue #4) |
 | 2.1 | 2026-11-13 | M6: disputes и notifications, миграция 0002_m6, API дайджестов и споров, эффективная сумма дня |
 | 2.0 | 2026-11-13 | M4: реализация ORM + Alembic, HTTP API, договор union на сервисном слое |
 | 1.0 | 2026-11-13 | Сессии, heartbeat, интервалы, дневные записи, версии политики |

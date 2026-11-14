@@ -48,12 +48,16 @@ def queue(
     recipient: str,
     payload: dict,
     text: str | None = None,
+    tenant_id: str | None = None,
+    project_id: str | None = None,
 ) -> str:
     """Поставить уведомление в очередь (status=pending). Возвращает id."""
     notification_id = f"ntf-{uuid.uuid4().hex[:12]}"
     sess.add(
         models.Notification(
             notification_id=notification_id,
+            tenant_id=tenant_id,
+            project_id=project_id,
             kind=kind,
             recipient=recipient,
             status=PENDING,
@@ -188,6 +192,8 @@ def on_day_closed(
         recipient=participant_id,
         payload=payload,
         text=text,
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
     )
     n = sess.get(models.Notification, notification_id)
     deliver(sess, n)
@@ -204,7 +210,8 @@ def dispatch_monthly(sess: Session, project: models.Project, month: str) -> list
             pid
             for (pid,) in sess.execute(
                 select(models.DayRecord.participant_id).where(
-                    models.DayRecord.date.like(f"{month}%")
+                    models.DayRecord.date.like(f"{month}%"),
+                    models.DayRecord.project_id == project.project_id,
                 )
             )
         }
@@ -220,6 +227,8 @@ def dispatch_monthly(sess: Session, project: models.Project, month: str) -> list
             recipient=pid,
             payload=md,
             text=digest.render_month_digest(md),
+            tenant_id=project.tenant_id,
+            project_id=project.project_id,
         )
         deliver(sess, sess.get(models.Notification, notification_id))
         ids.append(notification_id)

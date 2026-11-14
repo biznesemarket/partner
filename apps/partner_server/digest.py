@@ -33,13 +33,18 @@ class DigestError(service.DomainError):
 
 def day_digest(sess: Session, project: models.Project, participant_id: str, date_iso: str) -> dict:
     """Дайджест закрытого дня: часы по классам, ₽, доля %, флаги, споры."""
-    day_id = f"{participant_id}|{date_iso}"
-    rec = sess.get(models.DayRecord, day_id)
+    rec = service.find_day_record(sess, project, participant_id, date_iso)
     if rec is None or not rec.closed:
         raise DigestError(
             "day_not_closed",
             f"день {date_iso} участника {participant_id!r} не закрыт — дайджест строится по закрытым дням",
         )
+    if rec.project_id != project.project_id:
+        raise DigestError(
+            "day_other_project",
+            f"день {rec.day_id} принадлежит проекту {rec.project_id!r}, а не {project.project_id!r}",
+        )
+    day_id = rec.day_id
 
     flags = sorted(
         sess.scalars(select(models.Flag.code).where(models.Flag.day_id == day_id)).all()
@@ -71,15 +76,31 @@ def day_digest(sess: Session, project: models.Project, participant_id: str, date
     ]
     disputed_intervals = sorted({i for d in disputes for i in d["interval_refs"]})
 
-    # Часы по классам: пересборка из БД (детерминированно) через golden-калькулятор
+    # Часы по классам: пересборка из БД (детерминированно) через golden-калькулятор.
+    # ADR-0021: после закрытия поздние события дают adjustment, а не перезапись.
+    # Сумма пересчета обязана совпадать с эффективной суммой; расхождение часов
+    # допустимо только при наличии компенсации.
     computed = service.compute_day(sess, project, participant_id, date_iso)
-    if computed["paid_seconds"] != rec.paid_seconds or computed["amount_cents"] != rec.amount_cents:
+    effective_cents = rec.amount_cents + delta_cents
+    # Сумма пересчета может совпадать либо с исходной записью (спор/ручная
+    # корректировка не меняет расчет), либо с эффективной суммой (поздние
+    # события уже компенсированы). Иначе — порча БД.
+    if computed["amount_cents"] not in (rec.amount_cents, effective_cents):
         raise DigestError(
             "day_mismatch",
-            "пересчет дня расходится с закрытой записью — проверьте целостность БД",
+            "пересчет дня расходится с закрытой записью и корректировками — проверьте целостность БД",
         )
+    auto_recompute = any(
+        a["approved_by"] == "system-late-events" for a in adjustments
+    )
+    if computed["paid_seconds"] != rec.paid_seconds and not auto_recompute:
+        raise DigestError(
+            "day_mismatch",
+            "пересчет часов расходится с закрытой записью без компенсации — проверьте целостность БД",
+        )
+    recomputed = computed["paid_seconds"] != rec.paid_seconds
 
-    amount_cents = rec.amount_cents + delta_cents
+    amount_cents = effective_cents
     return {
         "kind": "day_digest",
         "participant_id": participant_id,
@@ -89,6 +110,8 @@ def day_digest(sess: Session, project: models.Project, participant_id: str, date
         "hours_by_class": {cls: computed["breakdown"].get(cls, "0") for cls in calc.PAID_CLASSES},
         "paid_seconds": rec.paid_seconds,
         "paid_hours": str(Decimal(rec.paid_seconds) / calc.H),
+        "recomputed_paid_seconds": computed["paid_seconds"] if recomputed else None,
+        "recomputed_amount_cents": computed["amount_cents"] if recomputed else None,
         "amount_cents": rec.amount_cents,
         "amount_rub": str(Decimal(rec.amount_cents) / 100),
         "adjustments": adjustments,
@@ -125,6 +148,13 @@ def render_day_digest(d: dict) -> str:
     lines.append(f"Доля дня: {d['share_pct']} % ({d['share_bp']} бп)")
     if d["adjustments"]:
         lines.append(f"Корректировки: {d['adjustments_delta_cents'] / 100:+.2f} ₽ → итог {d['effective_amount_rub']} ₽")
+    if d.get("recomputed_paid_seconds") is not None:
+        lines.append(
+            "Поздние события: пересчет "
+            f"{Decimal(d['recomputed_paid_seconds']) / calc.H} ч / "
+            f"{Decimal(d['recomputed_amount_cents']) / 100} ₽; "
+            "закрытая запись не изменена, разница учтена корректировкой (ADR-0021)"
+        )
     if d["flags"]:
         lines.append(f"Флаги: {', '.join(d['flags'])}")
     if d["disputed_intervals"]:
@@ -160,6 +190,7 @@ def _month_unclosed_days(
         for r in sess.scalars(
             select(models.DayRecord)
             .where(models.DayRecord.participant_id == participant_id)
+            .where(models.DayRecord.project_id == project.project_id)
             .where(models.DayRecord.date.like(f"{month}%"))
             .where(models.DayRecord.closed == 1)
         ).all()
@@ -174,6 +205,7 @@ def month_digest(sess: Session, project: models.Project, participant_id: str, mo
     rows = sess.scalars(
         select(models.DayRecord)
         .where(models.DayRecord.participant_id == participant_id)
+        .where(models.DayRecord.project_id == project.project_id)
         .where(models.DayRecord.date.like(f"{month}%"))
         .where(models.DayRecord.closed == 1)
         .order_by(models.DayRecord.date)
@@ -198,9 +230,11 @@ def month_digest(sess: Session, project: models.Project, participant_id: str, mo
 
     open_disputes = sess.scalars(
         select(models.Dispute)
+        .join(models.DayRecord, models.Dispute.day_id == models.DayRecord.day_id)
         .where(models.Dispute.participant_id == participant_id)
+        .where(models.Dispute.project_id == project.project_id)
         .where(models.Dispute.status == "open")
-        .where(models.Dispute.day_id.like(f"{participant_id}|{month}%"))
+        .where(models.DayRecord.date.like(f"{month}%"))
     ).all()
 
     # Остаток пула: пул долей (по умолчанию 30% оценки = 3000 бп) минус
@@ -211,7 +245,9 @@ def month_digest(sess: Session, project: models.Project, participant_id: str, mo
     accrued_all_bp = sum(
         Decimal(r.share_bp or 0)
         for r in sess.scalars(
-            select(models.DayRecord).where(models.DayRecord.date.like(f"{month}%"))
+            select(models.DayRecord)
+            .where(models.DayRecord.project_id == project.project_id)
+            .where(models.DayRecord.date.like(f"{month}%"))
         ).all()
     ).quantize(Decimal("0.0001"))
     remainder_bp = (pool_bp - accrued_all_bp).quantize(Decimal("0.0001"))

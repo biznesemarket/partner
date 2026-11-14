@@ -178,12 +178,18 @@ def ingest_heartbeat(
     existing = sess.get(models.Heartbeat, event_id)
     if existing is not None:
         # T-3 (threat-model): replay — повтор не записывается, инцидент в журнале
+        session = sess.get(models.Session, session_id)
+        project = (
+            sess.get(models.Project, session.project_id) if session is not None else None
+        )
         audit_log.incident(
             sess,
             code="replay",
             entity="heartbeats",
             entity_id=event_id,
             meta={"session_id": session_id, "seq": seq},
+            tenant_id=project.tenant_id if project is not None else None,
+            project_id=project.project_id if project is not None else None,
         )
         return {"status": "duplicate", "event_id": event_id}
 
@@ -198,12 +204,15 @@ def ingest_heartbeat(
         )
     ).first()
     if dup_seq is not None:
+        project = sess.get(models.Project, session.project_id)
         audit_log.incident(
             sess,
             code="duplicate_seq",
             entity="heartbeats",
             entity_id=event_id,
             meta={"session_id": session_id, "seq": seq},
+            tenant_id=project.tenant_id if project is not None else None,
+            project_id=project.project_id if project is not None else None,
         )
         raise DomainError(
             "duplicate_seq", f"seq={seq} для сессии {session_id!r} уже записан"
@@ -232,6 +241,36 @@ def ingest_heartbeat(
 
 
 # ---------- сборка дня ----------
+
+
+def day_id_for(project: models.Project, participant_id: str, date_iso: str) -> str:
+    """Идентификатор закрытого дня в разрезе проекта (v1.2).
+
+    Исторические записи v1.0/v1.1 имели формат ``participant|date``; они
+    продолжают читаться через find_day_record (обратная совместимость).
+    """
+    return f"{project.project_id}|{participant_id}|{date_iso}"
+
+
+def find_day_record(
+    sess: Session, project: models.Project, participant_id: str, date_iso: str
+) -> models.DayRecord | None:
+    """Найти день проекта: сначала новый project-scoped id, затем legacy.
+
+    Legacy-запись другого проекта не возвращается: для второго проекта
+    создается отдельная запись с project-scoped id (issue #4).
+    """
+    rec = sess.get(models.DayRecord, day_id_for(project, participant_id, date_iso))
+    if rec is not None:
+        return rec
+    legacy = sess.get(
+        models.DayRecord, f"{participant_id}|{date_iso}"
+    )
+    if legacy is not None and (
+        legacy.project_id is None or legacy.project_id == project.project_id
+    ):
+        return legacy
+    return None
 
 
 def day_intervals(
@@ -441,23 +480,179 @@ def _payload_sha(participant_id: str, date_iso: str, computed: dict) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _recompute_adjustment_id(
+    day_id: str, sha: str, effective_cents: int | None = None
+) -> str:
+    """Детерминированный id компенсации пересчета: идемпотентность (ADR-0021).
+
+    Базовый ключ — day_id|sha. Если та же компенсация уже была, но база
+    успела измениться (возврат данных после другой компенсации), добавляется
+    суффикс эффективной суммы — отдельная обратная запись.
+    """
+    key = f"{day_id}|{sha}"
+    if effective_cents is not None:
+        key = f"{key}|{effective_cents}"
+    return f"adj-recalc-{hashlib.sha256(key.encode('utf-8')).hexdigest()[:24]}"
+
+
+def _compensate_reclose(
+    sess: Session,
+    project: models.Project,
+    rec: models.DayRecord,
+    computed: dict,
+    sha: str,
+) -> dict:
+    """Пересчет закрытого дня: запись не меняется, разница — adjustment.
+
+    ADR-0021: принятое начисление неизменяемо. Если поздние события в грейсе
+    изменили расчет, создается компенсирующая запись на дельту (append-only);
+    повторный пересчет с тем же sha идемпотентен по детерминированному id.
+    """
+    adjustments = sess.scalars(
+        select(models.Adjustment).where(models.Adjustment.day_id == rec.day_id)
+    ).all()
+    effective_cents = rec.amount_cents + sum(a.delta_cents for a in adjustments)
+    base_id = _recompute_adjustment_id(rec.day_id, sha)
+    existing = sess.get(models.Adjustment, base_id)
+    if existing is not None and computed["amount_cents"] == effective_cents:
+        result = get_day(sess, project, rec.participant_id, rec.date)
+        result.update(
+            {
+                "status": "duplicate_compensation",
+                "adjustment_id": base_id,
+                "delta_cents": existing.delta_cents,
+                "recomputed_amount_cents": computed["amount_cents"],
+                "recomputed_paid_seconds": computed["paid_seconds"],
+                "recomputed_sha256": sha,
+            }
+        )
+        return result
+
+    if (
+        existing is None
+        and sha == rec.sha256_input
+        and computed["amount_cents"] == effective_cents
+    ):
+        result = get_day(sess, project, rec.participant_id, rec.date)
+        result.update(
+            {
+                "status": "duplicate",
+                "sha256": rec.sha256_input,
+                "recomputed_sha256": sha,
+            }
+        )
+        return result
+
+    # База изменилась после прежней компенсации (например, возврат данных):
+    # отдельный id, чтобы append-only история сохранила обратную запись.
+    adj_id = (
+        base_id
+        if existing is None
+        else _recompute_adjustment_id(rec.day_id, sha, effective_cents)
+    )
+    already = sess.get(models.Adjustment, adj_id)
+    if already is not None:
+        result = get_day(sess, project, rec.participant_id, rec.date)
+        result.update(
+            {
+                "status": "duplicate_compensation",
+                "adjustment_id": adj_id,
+                "delta_cents": already.delta_cents,
+                "recomputed_amount_cents": computed["amount_cents"],
+                "recomputed_paid_seconds": computed["paid_seconds"],
+                "recomputed_sha256": sha,
+            }
+        )
+        return result
+
+    delta_cents = computed["amount_cents"] - effective_cents
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    sess.add(
+        models.Adjustment(
+            adjustment_id=adj_id,
+            day_id=rec.day_id,
+            delta_cents=delta_cents,
+            reason=(
+                "автоматическая компенсация пересчета закрытого дня: "
+                f"sha {rec.sha256_input[:12]}… → {sha[:12]}…, "
+                f"часы {rec.paid_seconds} → {computed['paid_seconds']}"
+            ),
+            approved_by="system-late-events",
+            created_at=now_iso,
+        )
+    )
+    # Флаги только добавляются: исходные доказательства не удаляются.
+    known_flags = {
+        f.code
+        for f in sess.scalars(
+            select(models.Flag).where(models.Flag.day_id == rec.day_id)
+        ).all()
+    }
+    for code in computed["flags"]:
+        if code not in known_flags:
+            sess.add(
+                models.Flag(
+                    day_id=rec.day_id,
+                    code=code,
+                    detail=computed["breakdown"].get("note"),
+                )
+            )
+    sess.commit()
+    audit_log.record(
+        sess,
+        actor="system-dayclose",
+        entity="day_records",
+        entity_id=rec.day_id,
+        action="day.reclose_compensated",
+        old_value={
+            "sha256": rec.sha256_input,
+            "paid_seconds": rec.paid_seconds,
+            "amount_cents": rec.amount_cents,
+            "effective_amount_cents": effective_cents,
+        },
+        new_value={
+            "sha256": sha,
+            "paid_seconds": computed["paid_seconds"],
+            "amount_cents": computed["amount_cents"],
+            "delta_cents": delta_cents,
+            "adjustment_id": adj_id,
+        },
+        meta={"reason": "late_events_or_recompute", "day_id": rec.day_id},
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
+    )
+    result = get_day(sess, project, rec.participant_id, rec.date)
+    result.update(
+        {
+            "status": "compensated",
+            "adjustment_id": adj_id,
+            "delta_cents": delta_cents,
+            "recomputed_amount_cents": computed["amount_cents"],
+            "recomputed_paid_seconds": computed["paid_seconds"],
+            "recomputed_sha256": sha,
+        }
+    )
+    return result
+
+
 def close_day(
     sess: Session,
     project: models.Project,
     participant_id: str,
     date_iso: str,
 ) -> dict:
-    """Закрытие дня (ADR-0017): пересчет и запись day_record closed=1.
+    """Закрытие дня (ADR-0017, ADR-0021): запись неизменяема после закрытия.
 
-    Повторное закрытие того же дня дает тот же результат (идемпотентно):
-    запись заменяется той же самой строкой; правки закрытого дня — только
-    через adjustments (M6).
+    Идемпотентный повтор с тем же расчетом возвращает duplicate. Если после
+    закрытия пришли события в грейсе и пересчет изменился — создается
+    компенсирующая запись (adjustment), а day_record не перезаписывается.
     """
     # M9.1: лицензия invalid/expired блокирует новые закрытия; чтение,
     # экспорт и снятие системы не блокируются («данные клиента — у клиента»).
     _license_guard()
     computed = compute_day(sess, project, participant_id, date_iso)
-    day_id = f"{participant_id}|{date_iso}"
+    rec = find_day_record(sess, project, participant_id, date_iso)
+    day_id = rec.day_id if rec is not None else day_id_for(project, participant_id, date_iso)
     cash_cents, equity_cents = calc.cash_split(
         computed["amount_cents"],
         float(computed.get("cash_share_pct", 0.0) or 0.0)
@@ -466,11 +661,19 @@ def close_day(
     )
     sha = _payload_sha(participant_id, date_iso, computed)
 
-    rec = sess.get(models.DayRecord, day_id)
+    if rec is not None and rec.project_id and rec.project_id != project.project_id:
+        raise DomainError(
+            "day_other_project",
+            f"день {day_id} уже принадлежит проекту {rec.project_id!r}",
+            status=409,
+        )
+    if rec is not None and rec.closed:
+        return _compensate_reclose(sess, project, rec, computed, sha)
     if rec is None:
         rec = models.DayRecord(day_id=day_id)
         sess.add(rec)
     rec.participant_id = participant_id
+    rec.project_id = project.project_id
     rec.date = date_iso
     rec.tz = computed["tz"]
     rec.paid_seconds = computed["paid_seconds"]
@@ -526,8 +729,8 @@ def get_day(
     date_iso: str,
 ) -> dict:
     """Чтение дня: закрытый — из БД (неизменяемый), незакрытый — preview."""
-    day_id = f"{participant_id}|{date_iso}"
-    rec = sess.get(models.DayRecord, day_id)
+    rec = find_day_record(sess, project, participant_id, date_iso)
+    day_id = rec.day_id if rec is not None else day_id_for(project, participant_id, date_iso)
     if rec is not None and rec.closed:
         flags = [
             f.code
