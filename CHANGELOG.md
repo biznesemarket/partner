@@ -2,59 +2,10 @@
 
 Формат — Keep a Changelog, версии — SemVer.
 
-## [1.2.0] — 2026-11-14
+## [1.3.0] — 2026-11-14
 
-### Добавлено — эксплуатация и доверие (issues #4–#7)
-
-- **Tenant/RBAC (issue #4)**: `PARTNER_TENANT_TOKENS` привязывает Bearer-токен
-  к tenant; `DayRecord.project_id` и project-scoped `day_id` разделяют дни
-  проектов; списки статусов, споров, уведомлений, аудита и снапшотов
-  фильтруются по tenant/project; миграция `0007_tenant_rbac`, тесты изоляции.
-- **Месячный дайджест (T-02)**: остаток пула и дни считаются только по
-  проекту, а не по всем `day_records`.
-- **Инвариант закрытого дня (issue #7, ADR-0021)**: `close_day` не
-  перезаписывает принятый `day_record`; повтор идемпотентен, поздние события
-  создают append-only `adjustment` на дельту, повторная компенсация не
-  дублируется; дайджест показывает пересчет и компенсацию.
-- **PostgreSQL и Docker в CI (issue #5)**: job `postgres-smoke` с
-  `postgres:16` — `alembic upgrade head`/`check`, seed, uvicorn, `/healthz`,
-  закрытие и чтение дня; job `docker-build` — compose config и сборка образа.
-  Добавлен идемпотентный `python -m partner_server.seed`.
-- **Поставка `partner-tracker` (issue #6)**: release-workflow собирает
-  wheel/sdist и создает GitHub Release; CI `package-smoke` ставит wheel в
-  чистое окружение и прогоняет `partner day --demo` + `policy_lint` на
-  чистом репозитории клиента; repo-pack workflow поддерживает
-  `PARTNER_TRACKER_WHEEL`/`PARTNER_TRACKER_INDEX_URL`; `jsonschema` и
-  `tzdata` добавлены в зависимости пакета; версия 1.2.0.
-
-## [1.1.0] — 2026-11-14
-
-### Добавлено — сквозной учет (issues #1–#3)
-
-- **`partner-agent-kit`** (`apps/partner_agent_kit`): CLI/daemon сессий,
-  heartbeat 30 с, разрез интервала по локальной полуночи пояса проекта,
-  классификация `active_human/supervised_agent/autonomous_agent/idle`,
-  офлайн-буфер JSONL с отправкой в порядке `seq`, HMAC-подпись устройства,
-  MCP-сервер stdio (6 инструментов, `confirm=true` для старта и спора),
-  VS Code-обертка. Общая строка подписи — `partner_cli.signing`.
-- **Коннекторы GitHub/Forgejo/Gitea**: вебхуки `push`, `pull_request`,
-  `issues` с HMAC-подписью и дедупликацией delivery; таблицы
-  `connector_events` и `repo_facts` (миграция `0006_connectors`); привязка
-  пустых `task_ref`/`branch` сессий по ветке `dev/<логин>/<тема>`;
-  эндпоинты `/v1/connectors/*`; backfill через `partner-connector sync-repo`.
-- **`no_output`**: флаг при >3 оплач. ч без коммитов, PR-диффов и
-  `signals.tool_calls`, привязанных к ветке/задаче сессий участника.
-- **Тесты**: 156 (25 новых): подпись, replay/duplicate seq, офлайн-буфер,
-  полночь, MCP, вебхуки, дедупликация, привязка сессий, no_output,
-  нормализация API GitHub/Forgejo.
-
-### Документация
-
-- `agent-kit.md` и `connectors.md` переведены в approved и описывают
-  реализацию v1.1; data-model дополнена двумя таблицами и API; backlog
-  B-01/B-02/B-04 закрыты.
-
-## [Незапланировано]
+Дашборд директора, приватная поставка wheel, agent_chat, RBAC-роли и
+надёжность `legal.yaml`.
 
 ### RBAC-роли director/participant/lawyer (T-06, 2026-11-14)
 
@@ -82,7 +33,7 @@
   read-modify-write и атомарная замена через `os.replace`; читатель не
   видит частичную запись, занятость дает `legal_state_busy` (409).
 - **Демо-профиль**: `WizardAnswers.demo()` больше не содержит ФИО
-  директора — «ООО «Демо»» / «Директор (демо)».
+  директора — ООО «Демо» / Директор (демо).
 
 ### Веб-дашборд директора (issue #10, 2026-11-14)
 
@@ -162,6 +113,59 @@
 
 - Установка у пилотного клиента (ФОНИИ) и организационное закрытие DoD M9
 - Docs-сайт на публичном домене (артефакт CI готов, D9)
+
+
+## [1.2.0] — 2026-11-14
+
+### Добавлено — эксплуатация и доверие (issues #4–#7)
+
+- **Tenant/RBAC (issue #4)**: `PARTNER_TENANT_TOKENS` привязывает Bearer-токен
+  к tenant; `DayRecord.project_id` и project-scoped `day_id` разделяют дни
+  проектов; списки статусов, споров, уведомлений, аудита и снапшотов
+  фильтруются по tenant/project; миграция `0007_tenant_rbac`, тесты изоляции.
+- **Месячный дайджест (T-02)**: остаток пула и дни считаются только по
+  проекту, а не по всем `day_records`.
+- **Инвариант закрытого дня (issue #7, ADR-0021)**: `close_day` не
+  перезаписывает принятый `day_record`; повтор идемпотентен, поздние события
+  создают append-only `adjustment` на дельту, повторная компенсация не
+  дублируется; дайджест показывает пересчет и компенсацию.
+- **PostgreSQL и Docker в CI (issue #5)**: job `postgres-smoke` с
+  `postgres:16` — `alembic upgrade head`/`check`, seed, uvicorn, `/healthz`,
+  закрытие и чтение дня; job `docker-build` — compose config и сборка образа.
+  Добавлен идемпотентный `python -m partner_server.seed`.
+- **Поставка `partner-tracker` (issue #6)**: release-workflow собирает
+  wheel/sdist и создает GitHub Release; CI `package-smoke` ставит wheel в
+  чистое окружение и прогоняет `partner day --demo` + `policy_lint` на
+  чистом репозитории клиента; repo-pack workflow поддерживает
+  `PARTNER_TRACKER_WHEEL`/`PARTNER_TRACKER_INDEX_URL`; `jsonschema` и
+  `tzdata` добавлены в зависимости пакета; версия 1.2.0.
+
+## [1.1.0] — 2026-11-14
+
+### Добавлено — сквозной учет (issues #1–#3)
+
+- **`partner-agent-kit`** (`apps/partner_agent_kit`): CLI/daemon сессий,
+  heartbeat 30 с, разрез интервала по локальной полуночи пояса проекта,
+  классификация `active_human/supervised_agent/autonomous_agent/idle`,
+  офлайн-буфер JSONL с отправкой в порядке `seq`, HMAC-подпись устройства,
+  MCP-сервер stdio (6 инструментов, `confirm=true` для старта и спора),
+  VS Code-обертка. Общая строка подписи — `partner_cli.signing`.
+- **Коннекторы GitHub/Forgejo/Gitea**: вебхуки `push`, `pull_request`,
+  `issues` с HMAC-подписью и дедупликацией delivery; таблицы
+  `connector_events` и `repo_facts` (миграция `0006_connectors`); привязка
+  пустых `task_ref`/`branch` сессий по ветке `dev/<логин>/<тема>`;
+  эндпоинты `/v1/connectors/*`; backfill через `partner-connector sync-repo`.
+- **`no_output`**: флаг при >3 оплач. ч без коммитов, PR-диффов и
+  `signals.tool_calls`, привязанных к ветке/задаче сессий участника.
+- **Тесты**: 156 (25 новых): подпись, replay/duplicate seq, офлайн-буфер,
+  полночь, MCP, вебхуки, дедупликация, привязка сессий, no_output,
+  нормализация API GitHub/Forgejo.
+
+### Документация
+
+- `agent-kit.md` и `connectors.md` переведены в approved и описывают
+  реализацию v1.1; data-model дополнена двумя таблицами и API; backlog
+  B-01/B-02/B-04 закрыты.
 
 ## [1.0.0] — 2026-11-13
 
