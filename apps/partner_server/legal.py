@@ -227,6 +227,7 @@ def build_month_snapshot(
         select(models.DayRecord)
         .join(models.Participant, models.DayRecord.participant_id == models.Participant.participant_id)
         .where(models.Participant.tenant_id == project.tenant_id)
+        .where(models.DayRecord.project_id == project.project_id)
         .where(models.DayRecord.date.like(f"{month}%"))
         .where(models.DayRecord.closed == 1)
         .order_by(models.DayRecord.date)

@@ -39,6 +39,13 @@ docker compose -f deploy/docker-compose.yml ps   # migrate = Exit 0, server = he
 вебхуки возвращают 503. URL вебхука: `https://<host>/v1/connectors/github/webhook`
 (аналогично `forgejo`/`gitea`).
 
+Мультитенантность v1.2: `PARTNER_TENANT_TOKENS` — JSON-карта
+`{"<token>": "<tenant_id>"}` (или `{"<token>": {"tenant_id": "...",
+"role": "director"}}`). Токен из карты видит только проекты, дни, споры,
+уведомления, аудит и снапшоты своего tenant; `PARTNER_API_TOKEN` остается
+глобальным административным токеном. Без карты поведение прежнее:
+один токен на установку.
+
 Проверка:
 
 ```bash

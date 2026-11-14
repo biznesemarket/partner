@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import audit, models, notify
+from . import audit, models, notify, service
 from .config import settings
 
 
@@ -51,10 +51,15 @@ def open_dispute(
     interval_ids: list[str] | None = None,
 ) -> dict:
     """Шаг 1: разработчик открывает спор по закрытому дню."""
-    day_id = f"{participant_id}|{date_iso}"
-    rec = sess.get(models.DayRecord, day_id)
+    rec = service.find_day_record(sess, project, participant_id, date_iso)
     if rec is None or not rec.closed:
         raise DisputeError("day_not_closed", "спор открывается только по закрытому дню")
+    day_id = rec.day_id
+    if rec.project_id != project.project_id:
+        raise DisputeError(
+            "day_other_project",
+            f"день {day_id} принадлежит проекту {rec.project_id!r}, а не {project.project_id!r}",
+        )
 
     existing = sess.scalars(
         select(models.Dispute)
@@ -110,11 +115,15 @@ def open_dispute(
         action="dispute.opened",
         new_value={"day_id": day_id, "reason": reason, "interval_refs": interval_ids},
         meta={"window_deadline": _iso(deadline)},
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
     )
     ntf_id = notify.queue(
         sess,
         kind="dispute_opened",
         recipient="director",
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
         payload={
             "dispute_id": dispute_id,
             "day_id": day_id,
@@ -145,6 +154,7 @@ def resolve_dispute(
     decision: str,
     delta_cents: int | None = None,
     resolution: str | None = None,
+    project: models.Project | None = None,
 ) -> dict:
     """Шаги 2–3: решение директора. approved → adjustment (append-only)."""
     if decision not in ("approved", "rejected"):
@@ -155,6 +165,15 @@ def resolve_dispute(
         raise DisputeError("no_dispute", f"спор {dispute_id!r} не найден")
     if dispute.status != "open":
         raise DisputeError("dispute_not_open", f"спор {dispute_id} в статусе {dispute.status}")
+    if project is None:
+        project = sess.get(models.Project, dispute.project_id)
+    if project is None:
+        raise DisputeError("no_project", f"проект {dispute.project_id!r} не найден")
+    if project.project_id != dispute.project_id:
+        raise DisputeError(
+            "dispute_other_project",
+            f"спор {dispute_id} относится к проекту {dispute.project_id!r}",
+        )
 
     now = _now()
     if now > datetime.fromisoformat(dispute.window_deadline):
@@ -205,11 +224,15 @@ def resolve_dispute(
         old_value={"status": "open"},
         new_value={"status": dispute.status, "delta_cents": delta_cents},
         meta={"day_id": dispute.day_id, "resolution": dispute.resolution},
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
     )
     ntf_id = notify.queue(
         sess,
         kind="dispute_resolved",
         recipient=dispute.participant_id,
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
         payload={
             "dispute_id": dispute_id,
             "day_id": dispute.day_id,
@@ -217,7 +240,7 @@ def resolve_dispute(
             "delta_cents": delta_cents,
         },
         text=(
-            f"Спор {dispute_id} по дню {dispute.day_id.split('|')[1]} решен: {dispute.status}"
+            f"Спор {dispute_id} по дню {dispute.day_id.split('|')[-1]} решен: {dispute.status}"
             + (f", корректировка {delta_cents / 100:+.2f} ₽ (adjustment {adjustment_id})" if decision == "approved" else "")
             + f". Решение: {decided_by}."
         ),
@@ -255,8 +278,22 @@ def expire_overdue(sess: Session) -> list[str]:
     return expired
 
 
-def list_disputes(sess: Session, status: str | None = None, limit: int = 100) -> list[models.Dispute]:
+def list_disputes(
+    sess: Session,
+    status: str | None = None,
+    limit: int = 100,
+    tenant_id: str | None = None,
+    project_id: str | None = None,
+) -> list[models.Dispute]:
     stmt = select(models.Dispute).order_by(models.Dispute.opened_at.desc()).limit(limit)
     if status:
         stmt = stmt.where(models.Dispute.status == status)
+    if tenant_id or project_id:
+        stmt = stmt.join(
+            models.Project, models.Dispute.project_id == models.Project.project_id
+        )
+    if tenant_id:
+        stmt = stmt.where(models.Project.tenant_id == tenant_id)
+    if project_id:
+        stmt = stmt.where(models.Dispute.project_id == project_id)
     return sess.scalars(stmt).all()

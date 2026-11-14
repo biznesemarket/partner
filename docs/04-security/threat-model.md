@@ -51,7 +51,10 @@ late_rejected, 0 ₽ до решения директора (T-09). Оба пу�
   cross_tenant_denied + инцидент в аудите. Покрыто тестами (чтение и
   создание сессии).
 - Аутентификация: Bearer-токен при заданном PARTNER_API_TOKEN (M5.1).
-  Токен на tenant+project — M5; подпись устройства (device_id + signature
+  v1.2: `PARTNER_TENANT_TOKENS` привязывает токен к tenant; запросы к
+  чужому проекту/участнику, а также списки статусов, споров, уведомлений,
+  аудита и снапшотов фильтруются по tenant/project (issue #4).
+  Подпись устройства (device_id + signature
   HMAC-SHA256, таблица devices, миграция 0005_m9) — реализована в M9:
   unsigned heartbeat-батчи при PARTNER_REQUIRE_DEVICE_SIGN=1
   отбрасываться там же. До M8 канал между agent-kit и сервером считается

@@ -25,12 +25,16 @@ def record(
     old_value: dict | None = None,
     new_value: dict | None = None,
     meta: dict | None = None,
+    tenant_id: str | None = None,
+    project_id: str | None = None,
 ) -> str:
     """Запись в журнал. Возвращает audit_id."""
     audit_id = uuid.uuid4().hex
     sess.add(
         models.AuditLog(
             audit_id=audit_id,
+            tenant_id=tenant_id,
+            project_id=project_id,
             ts=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             actor=actor,
             entity=entity,
@@ -52,6 +56,8 @@ def incident(
     entity: str,
     entity_id: str,
     meta: dict | None = None,
+    tenant_id: str | None = None,
+    project_id: str | None = None,
 ) -> str:
     """Инцидент безопасности: actor = system-antifraud."""
     return record(
@@ -61,11 +67,23 @@ def incident(
         entity_id=entity_id,
         action=f"incident.{code}",
         meta=meta,
+        tenant_id=tenant_id,
+        project_id=project_id,
     )
 
 
-def list_entries(sess: Session, entity: str | None = None, limit: int = 100):
+def list_entries(
+    sess: Session,
+    entity: str | None = None,
+    limit: int = 100,
+    tenant_id: str | None = None,
+    project_id: str | None = None,
+):
     stmt = select(models.AuditLog).order_by(models.AuditLog.ts.desc()).limit(limit)
     if entity:
         stmt = stmt.where(models.AuditLog.entity == entity)
+    if tenant_id:
+        stmt = stmt.where(models.AuditLog.tenant_id == tenant_id)
+    if project_id:
+        stmt = stmt.where(models.AuditLog.project_id == project_id)
     return sess.scalars(stmt).all()

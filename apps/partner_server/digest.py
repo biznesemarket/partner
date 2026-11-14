@@ -33,13 +33,18 @@ class DigestError(service.DomainError):
 
 def day_digest(sess: Session, project: models.Project, participant_id: str, date_iso: str) -> dict:
     """Дайджест закрытого дня: часы по классам, ₽, доля %, флаги, споры."""
-    day_id = f"{participant_id}|{date_iso}"
-    rec = sess.get(models.DayRecord, day_id)
+    rec = service.find_day_record(sess, project, participant_id, date_iso)
     if rec is None or not rec.closed:
         raise DigestError(
             "day_not_closed",
             f"день {date_iso} участника {participant_id!r} не закрыт — дайджест строится по закрытым дням",
         )
+    if rec.project_id != project.project_id:
+        raise DigestError(
+            "day_other_project",
+            f"день {rec.day_id} принадлежит проекту {rec.project_id!r}, а не {project.project_id!r}",
+        )
+    day_id = rec.day_id
 
     flags = sorted(
         sess.scalars(select(models.Flag.code).where(models.Flag.day_id == day_id)).all()
@@ -160,6 +165,7 @@ def _month_unclosed_days(
         for r in sess.scalars(
             select(models.DayRecord)
             .where(models.DayRecord.participant_id == participant_id)
+            .where(models.DayRecord.project_id == project.project_id)
             .where(models.DayRecord.date.like(f"{month}%"))
             .where(models.DayRecord.closed == 1)
         ).all()
@@ -174,6 +180,7 @@ def month_digest(sess: Session, project: models.Project, participant_id: str, mo
     rows = sess.scalars(
         select(models.DayRecord)
         .where(models.DayRecord.participant_id == participant_id)
+        .where(models.DayRecord.project_id == project.project_id)
         .where(models.DayRecord.date.like(f"{month}%"))
         .where(models.DayRecord.closed == 1)
         .order_by(models.DayRecord.date)
@@ -198,9 +205,11 @@ def month_digest(sess: Session, project: models.Project, participant_id: str, mo
 
     open_disputes = sess.scalars(
         select(models.Dispute)
+        .join(models.DayRecord, models.Dispute.day_id == models.DayRecord.day_id)
         .where(models.Dispute.participant_id == participant_id)
+        .where(models.Dispute.project_id == project.project_id)
         .where(models.Dispute.status == "open")
-        .where(models.Dispute.day_id.like(f"{participant_id}|{month}%"))
+        .where(models.DayRecord.date.like(f"{month}%"))
     ).all()
 
     # Остаток пула: пул долей (по умолчанию 30% оценки = 3000 бп) минус
@@ -211,7 +220,9 @@ def month_digest(sess: Session, project: models.Project, participant_id: str, mo
     accrued_all_bp = sum(
         Decimal(r.share_bp or 0)
         for r in sess.scalars(
-            select(models.DayRecord).where(models.DayRecord.date.like(f"{month}%"))
+            select(models.DayRecord)
+            .where(models.DayRecord.project_id == project.project_id)
+            .where(models.DayRecord.date.like(f"{month}%"))
         ).all()
     ).quantize(Decimal("0.0001"))
     remainder_bp = (pool_bp - accrued_all_bp).quantize(Decimal("0.0001"))

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from . import audit, connectors, models
 from .db import get_db
-from .routes import get_project, require_token
+from .routes import Principal, ensure_project_tenant, get_project, require_token
 
 router = APIRouter(prefix="/v1/connectors", tags=["connectors"])
 
@@ -77,6 +77,7 @@ async def webhook(
         audit.incident(
             db, code="connector_secret_missing", entity="connector_events",
             entity_id=delivery_id, meta={"project": project.project_id, "forge": forge},
+            tenant_id=project.tenant_id, project_id=project.project_id,
         )
         raise HTTPException(
             503,
@@ -94,6 +95,7 @@ async def webhook(
             db, code="webhook_signature_invalid", entity="connector_events",
             entity_id=delivery_id,
             meta={"project": project.project_id, "forge": forge},
+            tenant_id=project.tenant_id, project_id=project.project_id,
         )
         raise HTTPException(
             403, {"code": "webhook_signature_invalid",
@@ -119,7 +121,7 @@ def import_facts(
     forge: str,
     payload: ImportIn,
     db: Session = Depends(get_db),
-    _: None = Depends(require_token),
+    principal: Principal = Depends(require_token),
 ):
     """Импорт фактов из API платформы (backfill) — идемпотентно по delivery_id."""
     if forge not in connectors.FORGES:
@@ -128,6 +130,7 @@ def import_facts(
         project = connectors.project_for_repo(db, forge, payload.repo, payload.project_id)
     except connectors.ConnectorError as err:
         _raise(err)
+    ensure_project_tenant(db, project, principal)
     facts = [
         connectors.FactDraft(
             kind=item.kind,

@@ -36,8 +36,8 @@
 
 | # | Риск | Где | Мера |
 |---|---|---|---|
-| T-01 | `status/summary`, `disputes`, `notifications`, `audit`, `snapshots` не фильтруются по tenant/project | `routes.py`, модели без `project_id` | добавить tenant-контекст в токен/запросы, `DayRecord.project_id`, тесты изоляции |
-| T-02 | `month_digest` считает остаток пула по всем `day_records` без фильтра проекта | `digest.py` | фильтр по проекту/tenant; тест на два проекта |
+| T-01 | ~~`status/summary`, `disputes`, `notifications`, `audit`, `snapshots` не фильтруются по tenant/project~~ | закрыто v1.2: `PARTNER_TENANT_TOKENS`, `DayRecord.project_id`, project-scoped `day_id`, фильтры и тесты изоляции |
+| T-02 | ~~`month_digest` считает остаток пула по всем `day_records` без фильтра проекта~~ | закрыто v1.2: фильтр `project_id` в месячном дайджесте/снапшоте, тесты |
 | T-03 | Повторное закрытие дня перезаписывает `day_record` при изменившихся данных | `service.close_day` | решить: запрет после окна или компенсирующая запись; ADR + тест |
 | T-04 | `legal.yaml` пишется без блокировки | `legal.py` | файловая блокировка/атомарная замена, тест конкурентности |
 | T-05 | `manual_only_policy: bill` бросает `NotImplementedError` | `calc.py` | оставить явный отказ в API или реализовать по ADR |

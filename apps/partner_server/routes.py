@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import pathlib
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -101,27 +102,141 @@ class ActorIn(BaseModel):
 # ---------- зависимости ----------
 
 
-def require_token(authorization: str | None = Header(default=None)) -> None:
-    from .config import settings
+@dataclass(frozen=True)
+class Principal:
+    """Аутентифицированный субъект API: токен → tenant-контекст (v1.2).
 
-    # Сравнение в постоянном времени (hmac.compare_digest): защита от
-    # timing-атак на Bearer-токен (threat-model §4, аудит-фикс F1/F10).
-    expected = f"Bearer {settings.api_token}"
-    if settings.api_token and not hmac.compare_digest(
-        authorization or "", expected
-    ):
+    tenant_id=None — глобальный административный токен (legacy PARTNER_API_TOKEN)
+    или demo-режим: фильтрация по tenant не выполняется. tenant-токены задаются
+    картой PARTNER_TENANT_TOKENS = {"<token>": "tenant_id"} (или объектом
+    {"tenant_id": ..., "role": ...}).
+    """
+
+    token: str
+    tenant_id: str | None = None
+    role: str = "director"
+
+
+def _tenant_tokens() -> dict[str, dict]:
+    """Разобрать PARTNER_TENANT_TOKENS. Ошибка конфигурации — fail closed."""
+    raw = (settings.tenant_tokens_json or "").strip()
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as err:
+        raise HTTPException(
+            500,
+            {"code": "tenant_tokens_invalid", "detail": f"PARTNER_TENANT_TOKENS: {err}"},
+        )
+    if not isinstance(data, dict):
+        raise HTTPException(
+            500,
+            {"code": "tenant_tokens_invalid",
+             "detail": "PARTNER_TENANT_TOKENS должен быть JSON-объектом token → tenant"},
+        )
+    tokens: dict[str, dict] = {}
+    for token, value in data.items():
+        if isinstance(value, str):
+            tokens[str(token)] = {"tenant_id": value, "role": "director"}
+        elif isinstance(value, dict):
+            tokens[str(token)] = {
+                "tenant_id": value.get("tenant_id"),
+                "role": value.get("role") or "director",
+            }
+        else:
+            raise HTTPException(
+                500,
+                {"code": "tenant_tokens_invalid",
+                 "detail": f"значение токена {token!r} должно быть строкой или объектом"},
+            )
+    return tokens
+
+
+def _bearer_token(authorization: str | None) -> str:
+    scheme, _, token = (authorization or "").partition(" ")
+    return token.strip() if scheme.lower() == "bearer" else ""
+
+
+def require_token(
+    authorization: str | None = Header(default=None),
+    x_partner_tenant: str | None = Header(default=None, alias="X-Partner-Tenant"),
+) -> Principal:
+    """Bearer-аутентификация с tenant-контекстом.
+
+    Приоритет: PARTNER_TENANT_TOKENS (токен привязан к tenant) → legacy
+    PARTNER_API_TOKEN (глобальный admin; X-Partner-Tenant сужает область) →
+    demo без токена. Сравнение — hmac.compare_digest (аудит-фиксы F1/F10).
+    """
+    supplied = _bearer_token(authorization)
+    tenant_tokens = _tenant_tokens()
+
+    if tenant_tokens:
+        for known, meta in tenant_tokens.items():
+            if supplied and hmac.compare_digest(supplied, known):
+                bound = meta.get("tenant_id")
+                if bound and x_partner_tenant and x_partner_tenant != bound:
+                    raise HTTPException(
+                        403,
+                        {"code": "cross_tenant_denied",
+                         "detail": "токен привязан к другому tenant"},
+                    )
+                return Principal(
+                    token=supplied,
+                    tenant_id=bound or x_partner_tenant,
+                    role=meta.get("role") or "director",
+                )
+        if settings.api_token and supplied and hmac.compare_digest(
+            supplied, settings.api_token
+        ):
+            return Principal(token=supplied, tenant_id=x_partner_tenant, role="admin")
         raise HTTPException(status_code=401, detail="требуется Bearer-токен")
+
+    if settings.api_token:
+        if not supplied or not hmac.compare_digest(supplied, settings.api_token):
+            raise HTTPException(status_code=401, detail="требуется Bearer-токен")
+        return Principal(token=supplied, tenant_id=x_partner_tenant, role="admin")
+
+    # demo-режим без токена: только local; tenant-заголовок допускается для тестов
+    return Principal(token=supplied, tenant_id=x_partner_tenant, role="demo")
+
+
+def ensure_project_tenant(
+    db: Session, project: models.Project, principal: Principal
+) -> None:
+    """Проект вне tenant-контекста токена → 403 + инцидент."""
+    if principal.tenant_id and project.tenant_id != principal.tenant_id:
+        audit.incident(
+            db,
+            code="cross_tenant_denied",
+            entity="projects",
+            entity_id=project.project_id,
+            meta={"token_tenant": principal.tenant_id, "project_tenant": project.tenant_id},
+            tenant_id=project.tenant_id,
+            project_id=project.project_id,
+        )
+        raise HTTPException(
+            403,
+            {"code": "cross_tenant_denied",
+             "detail": "проект принадлежит другой организации"},
+        )
 
 
 def get_project(
-    project_id: str | None = Query(default=None), db: Session = Depends(get_db)
+    project_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
 ) -> models.Project:
     if project_id:
         project = db.get(models.Project, project_id)
         if project is None:
             raise HTTPException(404, f"проект {project_id!r} не найден")
+        ensure_project_tenant(db, project, principal)
         return project
-    project = db.scalars(select(models.Project).limit(1)).first()
+    stmt = select(models.Project)
+    if principal.tenant_id:
+        stmt = stmt.where(models.Project.tenant_id == principal.tenant_id)
+    project = db.scalars(stmt.order_by(models.Project.project_id).limit(1)).first()
     if project is None:
         raise HTTPException(404, "в БД нет проектов — выполните seed")
     return project
@@ -135,12 +250,20 @@ def get_participant_or_404(db: Session, participant_id: str) -> models.Participa
 
 
 def check_tenant_isolation(
-    db: Session, project: models.Project, participant_id: str
+    db: Session,
+    project: models.Project,
+    participant_id: str,
+    principal: Principal | None = None,
 ) -> models.Participant:
     """M5.3: deny by default. Кросс-тенантный запрос → 403 + инцидент в аудите."""
     participant = get_participant_or_404(db, participant_id)
     try:
         service.ensure_same_tenant(project, participant)
+        if principal is not None and principal.tenant_id:
+            if participant.tenant_id != principal.tenant_id:
+                raise service.DomainError(
+                    "cross_tenant_denied", "участник принадлежит другому tenant"
+                )
     except service.DomainError as err:
         audit.incident(
             db,
@@ -148,17 +271,69 @@ def check_tenant_isolation(
             entity="participants",
             entity_id=participant_id,
             meta={"project": project.project_id, "project_tenant": project.tenant_id,
-                  "participant_tenant": participant.tenant_id},
+                  "participant_tenant": participant.tenant_id,
+                  "token_tenant": principal.tenant_id if principal else None},
+            tenant_id=project.tenant_id,
+            project_id=project.project_id,
         )
         raise HTTPException(403, {"code": err.code, "detail": err.message})
     return participant
 
 
+def ensure_participant_tenant(
+    db: Session, participant: models.Participant, principal: Principal
+) -> None:
+    if principal.tenant_id and participant.tenant_id != principal.tenant_id:
+        audit.incident(
+            db,
+            code="cross_tenant_denied",
+            entity="participants",
+            entity_id=participant.participant_id,
+            meta={"token_tenant": principal.tenant_id,
+                  "participant_tenant": participant.tenant_id},
+            tenant_id=participant.tenant_id,
+        )
+        raise HTTPException(
+            403,
+            {"code": "cross_tenant_denied",
+             "detail": "участник принадлежит другой организации"},
+        )
+
+
+def scoped_project(
+    db: Session, project_id: str | None, principal: Principal
+) -> models.Project | None:
+    """Необязательный фильтр project_id с проверкой tenant-контекста."""
+    if not project_id:
+        return None
+    project = db.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(404, f"проект {project_id!r} не найден")
+    ensure_project_tenant(db, project, principal)
+    return project
+
+
+def snapshot_in_scope(
+    snapshot: models.Snapshot,
+    principal: Principal,
+    project: models.Project | None = None,
+) -> bool:
+    """Снапшот виден только своему tenant/project (payload M7.1)."""
+    payload = snapshot.payload_json or {}
+    if principal.tenant_id and payload.get("tenant_id") != principal.tenant_id:
+        return False
+    if project is not None and payload.get("project_id") != project.project_id:
+        return False
+    return True
+
+
 def domain_error_status(code: str) -> int:
-    if code in ("no_session", "no_policy"):
+    if code in ("no_session", "no_policy", "day_other_project"):
         return 404
     if code == "cross_tenant_denied":
         return 403
+    if code == "day_project_conflict":
+        return 409
     return 422
 
 
@@ -191,28 +366,24 @@ def metrics(db: Session = Depends(get_db)):
 
 
 @router.post("/sessions", status_code=201, tags=["tracking"])
-def create_session(payload: SessionIn, db: Session = Depends(get_db), _: None = Depends(require_token)):
+def create_session(
+    payload: SessionIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     existing = db.get(models.Session, payload.session_id)
     if existing is not None:
+        # Чужой session_id не должен подтверждаться и раскрывать существование.
+        existing_project = db.get(models.Project, existing.project_id)
+        if existing_project is not None:
+            ensure_project_tenant(db, existing_project, principal)
         return {"status": "duplicate", "session_id": payload.session_id}  # идемпотентно
-    get_participant_or_404(db, payload.participant_id)
     project = db.get(models.Project, payload.project_id)
     if project is None:
         raise HTTPException(404, f"проект {payload.project_id!r} не найден")
-    participant = get_participant_or_404(db, payload.participant_id)
+    ensure_project_tenant(db, project, principal)
     # M5.3: сессия не может соединять участников разных организаций
-    try:
-        service.ensure_same_tenant(project, participant)
-    except service.DomainError as err:
-        audit.incident(
-            db,
-            code="cross_tenant_denied",
-            entity="sessions",
-            entity_id=payload.session_id,
-            meta={"project": payload.project_id,
-                  "participant": payload.participant_id},
-        )
-        raise HTTPException(403, {"code": err.code, "detail": err.message})
+    check_tenant_isolation(db, project, payload.participant_id, principal)
     db.add(
         models.Session(
             session_id=payload.session_id,
@@ -234,13 +405,19 @@ def post_heartbeat(
     db: Session = Depends(get_db),
     x_partner_device: str | None = Header(default=None),
     x_partner_sign: str | None = Header(default=None),
-    _: None = Depends(require_token),
+    principal: Principal = Depends(require_token),
 ):
     # M9 (threat-model §4): подпись устройства HMAC-SHA256 по канонической
     # строке события. Заголовки необязательны при require_device_sign=0;
     # при 1 неподписанный батч отклоняется (unsigned_heartbeat).
     if x_partner_device or x_partner_sign or settings.require_device_sign:
         _verify_device_signature(db, payload, x_partner_device, x_partner_sign)
+    # v1.2: heartbeat не может писать в сессию чужого tenant.
+    session = db.get(models.Session, payload.session_id)
+    if session is not None:
+        project = db.get(models.Project, session.project_id)
+        if project is not None:
+            ensure_project_tenant(db, project, principal)
     try:
         result = service.ingest_heartbeat(
             db,
@@ -307,12 +484,17 @@ class DeviceIn(BaseModel):
 
 
 @router.post("/devices", status_code=201, tags=["devices"])
-def register_device(payload: DeviceIn, db: Session = Depends(get_db), _: None = Depends(require_token)):
+def register_device(
+    payload: DeviceIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     """Регистрация устройства агента: секрет выдается ОДИН раз (не читается повторно).
 
     Ротация: новое устройство + отзыв старого (threat-model §4).
     """
-    get_participant_or_404(db, payload.participant_id)
+    participant = get_participant_or_404(db, payload.participant_id)
+    ensure_participant_tenant(db, participant, principal)
     import secrets as pysecrets
     from datetime import datetime as dt
 
@@ -331,28 +513,42 @@ def register_device(payload: DeviceIn, db: Session = Depends(get_db), _: None = 
     audit.record(
         db, actor="director", entity="devices", entity_id=device_id,
         action="registered", new_value={"participant": payload.participant_id, "label": payload.label},
+        tenant_id=participant.tenant_id,
     )
     db.commit()
     return {"device_id": device_id, "secret": secret, "participant_id": payload.participant_id}
 
 
 @router.post("/devices/{device_id}/revoke", tags=["devices"])
-def revoke_device(device_id: str, db: Session = Depends(get_db), _: None = Depends(require_token)):
+def revoke_device(
+    device_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     device = db.get(models.Device, device_id)
     if device is None:
         raise HTTPException(404, f"устройство {device_id!r} не найдено")
+    participant = get_participant_or_404(db, device.participant_id)
+    ensure_participant_tenant(db, participant, principal)
     device.status = "revoked"
     audit.record(
         db, actor="director", entity="devices", entity_id=device_id,
         action="revoked", old_value={"status": "active"}, new_value={"status": "revoked"},
+        tenant_id=participant.tenant_id,
     )
     db.commit()
     return {"device_id": device_id, "status": "revoked"}
 
 
 @router.get("/devices", tags=["devices"])
-def list_devices(participant_id: str = Query(...), db: Session = Depends(get_db), _: None = Depends(require_token)):
+def list_devices(
+    participant_id: str = Query(...),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     """Список устройств участника — без секретов (они не хранятся в открытом виде для витрины)."""
+    participant = get_participant_or_404(db, participant_id)
+    ensure_participant_tenant(db, participant, principal)
     rows = db.scalars(
         select(models.Device).where(models.Device.participant_id == participant_id)
     ).all()
@@ -363,17 +559,32 @@ def list_devices(participant_id: str = Query(...), db: Session = Depends(get_db)
 
 
 @router.get("/days/{date}", tags=["days"])
-def get_day(date: str, participant_id: str, project: models.Project = Depends(get_project), db: Session = Depends(get_db), _: None = Depends(require_token)):
+def get_day(
+    date: str,
+    participant_id: str,
+    project: models.Project = Depends(get_project),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     # Аудит F1 (P0): суммы/доли дня — персональные финансовые данные;
     # читаются только с Bearer (data-model.md §аутентификация). Открыты
     # лишь задокументированно публичные /v1/metrics и /v1/license.
-    check_tenant_isolation(db, project, participant_id)
-    return service.get_day(db, project, participant_id, date)
+    check_tenant_isolation(db, project, participant_id, principal)
+    try:
+        return service.get_day(db, project, participant_id, date)
+    except service.DomainError as err:
+        raise HTTPException(_status_for(err), {"code": err.code, "detail": err.message})
 
 
 @router.post("/days/{date}/close", tags=["days"])
-def close_day(date: str, participant_id: str, project: models.Project = Depends(get_project), db: Session = Depends(get_db), _: None = Depends(require_token)):
-    check_tenant_isolation(db, project, participant_id)
+def close_day(
+    date: str,
+    participant_id: str,
+    project: models.Project = Depends(get_project),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
+    check_tenant_isolation(db, project, participant_id, principal)
     try:
         return service.close_day(db, project, participant_id, date)
     except service.DomainError as err:
@@ -390,9 +601,15 @@ def license_state():
 
 
 @router.get("/days/{date}/explain", tags=["days"])
-def explain_day(date: str, participant_id: str, project: models.Project = Depends(get_project), db: Session = Depends(get_db), _: None = Depends(require_token)):
+def explain_day(
+    date: str,
+    participant_id: str,
+    project: models.Project = Depends(get_project),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     """Объяснение начисления: интервалы, union-секунды по классам, капы, версии."""
-    check_tenant_isolation(db, project, participant_id)
+    check_tenant_isolation(db, project, participant_id, principal)
     pieces, flags, agent_attached = service.day_intervals(db, project, participant_id, date)
     computed = service.compute_day(db, project, participant_id, date)
     pol, _, params = service.load_policy(db, project.project_id)
@@ -430,6 +647,7 @@ def status_summary(project: models.Project = Depends(get_project), db: Session =
             func.sum(models.DayRecord.paid_seconds),
             func.sum(models.DayRecord.amount_cents),
         )
+        .where(models.DayRecord.project_id == project.project_id)
         .where(models.DayRecord.date.like(f"{month}%"))
         .group_by(models.DayRecord.participant_id)
     ).all()
@@ -452,9 +670,9 @@ def status_month(
     month: str | None = Query(default=None, pattern="^\\d{4}-\\d{2}$"),
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    _: None = Depends(require_token),
+    principal: Principal = Depends(require_token),
 ):
-    check_tenant_isolation(db, project, participant_id)
+    check_tenant_isolation(db, project, participant_id, principal)
     rows = db.execute(
         select(
             models.DayRecord.date,
@@ -463,6 +681,7 @@ def status_month(
             models.DayRecord.share_bp,
         )
         .where(models.DayRecord.participant_id == participant_id)
+        .where(models.DayRecord.project_id == project.project_id)
         .where(models.DayRecord.date.like(f"{month or _current_month(project)}%"))
         .order_by(models.DayRecord.date)
     ).all()
@@ -507,10 +726,10 @@ def digest_day(
     participant_id: str,
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    _: None = Depends(require_token),
+    principal: Principal = Depends(require_token),
 ):
     """Дайджест закрытого дня: числа воспроизводимы из БД (DoD M6)."""
-    check_tenant_isolation(db, project, participant_id)
+    check_tenant_isolation(db, project, participant_id, principal)
     try:
         d = digest.day_digest(db, project, participant_id, date)
     except digest.DigestError as err:
@@ -524,10 +743,10 @@ def digest_month(
     participant_id: str,
     project: models.Project = Depends(get_project),
     db: Session = Depends(get_db),
-    _: None = Depends(require_token),
+    principal: Principal = Depends(require_token),
 ):
     """Месячный дайджест: часы, вклад, доли, остаток пула, pending."""
-    check_tenant_isolation(db, project, participant_id)
+    check_tenant_isolation(db, project, participant_id, principal)
     try:
         m = digest.month_digest(db, project, participant_id, month)
     except digest.DigestError as err:
@@ -536,9 +755,15 @@ def digest_month(
 
 
 @router.post("/days/{date}/disputes", status_code=201, tags=["disputes"])
-def open_dispute(date: str, payload: DisputeIn, project: models.Project = Depends(get_project), db: Session = Depends(get_db), _: None = Depends(require_token)):
+def open_dispute(
+    date: str,
+    payload: DisputeIn,
+    project: models.Project = Depends(get_project),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     """Спор дня: разработчик помечает день (и опционально интервалы)."""
-    check_tenant_isolation(db, project, payload.participant_id)
+    check_tenant_isolation(db, project, payload.participant_id, principal)
     try:
         return disputes.open_dispute(
             db,
@@ -554,8 +779,22 @@ def open_dispute(date: str, payload: DisputeIn, project: models.Project = Depend
 
 
 @router.post("/disputes/{dispute_id}/resolve", tags=["disputes"])
-def resolve_dispute(dispute_id: str, payload: DisputeResolveIn, db: Session = Depends(get_db), _: None = Depends(require_token)):
+def resolve_dispute(
+    dispute_id: str,
+    payload: DisputeResolveIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     """Решение директора в окне 3 дней; approved → adjustment (append-only)."""
+    dispute = db.get(models.Dispute, dispute_id)
+    if dispute is None:
+        raise HTTPException(404, {"code": "no_dispute",
+                                  "detail": f"спор {dispute_id!r} не найден"})
+    project = db.get(models.Project, dispute.project_id)
+    if project is None:
+        raise HTTPException(404, {"code": "no_project",
+                                  "detail": f"проект {dispute.project_id!r} не найден"})
+    ensure_project_tenant(db, project, principal)
     try:
         return disputes.resolve_dispute(
             db,
@@ -564,6 +803,7 @@ def resolve_dispute(dispute_id: str, payload: DisputeResolveIn, db: Session = De
             decision=payload.decision,
             delta_cents=payload.delta_cents,
             resolution=payload.resolution,
+            project=project,
         )
     except disputes.DisputeError as err:
         raise HTTPException(domain_error_status(err.code), {"code": err.code, "detail": err.message})
@@ -572,12 +812,20 @@ def resolve_dispute(dispute_id: str, payload: DisputeResolveIn, db: Session = De
 @router.get("/disputes", tags=["disputes"])
 def list_disputes(
     status: str | None = Query(default=None, pattern="^(open|resolved|rejected|expired)$"),
+    project_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    _: None = Depends(require_token),
+    principal: Principal = Depends(require_token),
 ):
-    """Список споров (директор): фильтр по статусу."""
-    rows = disputes.list_disputes(db, status=status, limit=limit)
+    """Список споров (директор): фильтр по статусу и проекту в рамках tenant."""
+    project = scoped_project(db, project_id, principal)
+    rows = disputes.list_disputes(
+        db,
+        status=status,
+        limit=limit,
+        tenant_id=principal.tenant_id,
+        project_id=project.project_id if project else None,
+    )
     return {
         "count": len(rows),
         "disputes": [
@@ -604,12 +852,18 @@ def list_disputes(
 def notifications_list(
     status: str | None = Query(default=None, pattern="^(pending|sent|failed)$"),
     recipient: str | None = Query(default=None),
+    project_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    _: None = Depends(require_token),
+    principal: Principal = Depends(require_token),
 ):
     """Журнал доставки дайджестов: канал, статус, attempts/last_error (M8.4)."""
+    project = scoped_project(db, project_id, principal)
     stmt = select(models.Notification).order_by(models.Notification.created_at.desc()).limit(limit)
+    if principal.tenant_id:
+        stmt = stmt.where(models.Notification.tenant_id == principal.tenant_id)
+    if project:
+        stmt = stmt.where(models.Notification.project_id == project.project_id)
     if status:
         stmt = stmt.where(models.Notification.status == status)
     if recipient:
@@ -639,11 +893,16 @@ def notifications_list(
 
 
 @router.post("/policies", status_code=201, tags=["policy"])
-def create_policy_version(payload: PolicyIn, db: Session = Depends(get_db), _: None = Depends(require_token)):
+def create_policy_version(
+    payload: PolicyIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     """Новая версия политики: иммутабельна, действует с даты (R-4, threat-model §3)."""
     project = db.get(models.Project, payload.project_id)
     if project is None:
         raise HTTPException(404, f"проект {payload.project_id!r} не найден")
+    ensure_project_tenant(db, project, principal)
     current = db.scalars(
         select(models.Policy)
         .where(models.Policy.project_id == project.project_id)
@@ -675,6 +934,8 @@ def create_policy_version(payload: PolicyIn, db: Session = Depends(get_db), _: N
         old_value=old_params,
         new_value=payload.params_json,
         meta={"reason": payload.reason, "version": new_version},
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
     )
     return {
         "status": "created",
@@ -685,10 +946,19 @@ def create_policy_version(payload: PolicyIn, db: Session = Depends(get_db), _: N
 
 
 @router.post("/rate-versions", status_code=201, tags=["policy"])
-def create_rate_version(payload: RateVersionIn, db: Session = Depends(get_db), _: None = Depends(require_token)):
+def create_rate_version(
+    payload: RateVersionIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     """Новая версия ставки. Заднее число запрещено (V-04, R-2)."""
-    if db.get(models.Policy, payload.policy_id) is None:
+    policy = db.get(models.Policy, payload.policy_id)
+    if policy is None:
         raise HTTPException(404, f"политика {payload.policy_id!r} не найдена")
+    project = db.get(models.Project, policy.project_id)
+    if project is None:
+        raise HTTPException(404, f"проект {policy.project_id!r} не найден")
+    ensure_project_tenant(db, project, principal)
     today = datetime.now(timezone.utc).date().isoformat()
     if payload.effective_from < today:
         audit.incident(
@@ -697,6 +967,8 @@ def create_rate_version(payload: RateVersionIn, db: Session = Depends(get_db), _
             entity="rate_versions",
             entity_id=f"{payload.policy_id}|{payload.effective_from}",
             meta={"effective_from": payload.effective_from, "today": today},
+            tenant_id=project.tenant_id,
+            project_id=project.project_id,
         )
         raise HTTPException(
             422,
@@ -726,6 +998,8 @@ def create_rate_version(payload: RateVersionIn, db: Session = Depends(get_db), _
         entity_id=f"{payload.policy_id}|{payload.effective_from}",
         action="rate_version.create",
         new_value={"value_cents": payload.value_cents, "reason": payload.reason},
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
     )
     return {"status": "created", "policy_id": payload.policy_id,
             "effective_from": payload.effective_from}
@@ -734,12 +1008,20 @@ def create_rate_version(payload: RateVersionIn, db: Session = Depends(get_db), _
 @router.get("/audit", tags=["audit"])
 def audit_list(
     entity: str | None = Query(default=None),
+    project_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    _: None = Depends(require_token),
+    principal: Principal = Depends(require_token),
 ):
     """Журнал действий и инцидентов (директор). Append-only."""
-    entries = audit.list_entries(db, entity=entity, limit=limit)
+    project = scoped_project(db, project_id, principal)
+    entries = audit.list_entries(
+        db,
+        entity=entity,
+        limit=limit,
+        tenant_id=principal.tenant_id,
+        project_id=project.project_id if project else None,
+    )
     return {
         "count": len(entries),
         "entries": [
@@ -849,20 +1131,28 @@ def snapshot_month(month: str, payload: ActorIn, project: models.Project = Depen
         entity_id=result["snapshot_id"],
         action=f"snapshot.{result['status']}",
         new_value={"month": month, "sha256": result["sha256"], "git_ref": result.get("git_ref")},
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
     )
     return result
 
 
 @router.get("/snapshots", tags=["legal"])
 def snapshots_list(
+    project_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    _: None = Depends(require_token),
+    principal: Principal = Depends(require_token),
 ):
-    """Список месячных снапшотов (директор/юрист)."""
-    rows = db.scalars(
-        select(models.Snapshot).order_by(models.Snapshot.month.desc()).limit(limit)
-    ).all()
+    """Список месячных снапшотов (директор/юрист) в рамках tenant/project."""
+    project = scoped_project(db, project_id, principal)
+    rows = [
+        s
+        for s in db.scalars(
+            select(models.Snapshot).order_by(models.Snapshot.month.desc()).limit(limit)
+        ).all()
+        if snapshot_in_scope(s, principal, project)
+    ]
     return {
         "count": len(rows),
         "snapshots": [
@@ -879,10 +1169,14 @@ def snapshots_list(
 
 
 @router.get("/snapshots/{snapshot_id}", tags=["legal"])
-def snapshot_detail(snapshot_id: str, db: Session = Depends(get_db), _: None = Depends(require_token)):
+def snapshot_detail(
+    snapshot_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_token),
+):
     """Снапшот с payload и подписываемым листом (render)."""
     s = db.get(models.Snapshot, snapshot_id)
-    if s is None:
+    if s is None or not snapshot_in_scope(s, principal):
         raise HTTPException(404, f"снапшот {snapshot_id!r} не найден")
     return {
         "snapshot_id": s.snapshot_id,
@@ -911,5 +1205,7 @@ def legal_export(payload: ActorIn, project: models.Project = Depends(get_project
         action="legal.export",
         new_value={"bundle_sha256": bundle["manifest"]["bundle_sha256"],
                    "snapshots": len(bundle["snapshots"])},
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
     )
     return bundle

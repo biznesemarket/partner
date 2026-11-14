@@ -178,12 +178,18 @@ def ingest_heartbeat(
     existing = sess.get(models.Heartbeat, event_id)
     if existing is not None:
         # T-3 (threat-model): replay — повтор не записывается, инцидент в журнале
+        session = sess.get(models.Session, session_id)
+        project = (
+            sess.get(models.Project, session.project_id) if session is not None else None
+        )
         audit_log.incident(
             sess,
             code="replay",
             entity="heartbeats",
             entity_id=event_id,
             meta={"session_id": session_id, "seq": seq},
+            tenant_id=project.tenant_id if project is not None else None,
+            project_id=project.project_id if project is not None else None,
         )
         return {"status": "duplicate", "event_id": event_id}
 
@@ -198,12 +204,15 @@ def ingest_heartbeat(
         )
     ).first()
     if dup_seq is not None:
+        project = sess.get(models.Project, session.project_id)
         audit_log.incident(
             sess,
             code="duplicate_seq",
             entity="heartbeats",
             entity_id=event_id,
             meta={"session_id": session_id, "seq": seq},
+            tenant_id=project.tenant_id if project is not None else None,
+            project_id=project.project_id if project is not None else None,
         )
         raise DomainError(
             "duplicate_seq", f"seq={seq} для сессии {session_id!r} уже записан"
@@ -232,6 +241,36 @@ def ingest_heartbeat(
 
 
 # ---------- сборка дня ----------
+
+
+def day_id_for(project: models.Project, participant_id: str, date_iso: str) -> str:
+    """Идентификатор закрытого дня в разрезе проекта (v1.2).
+
+    Исторические записи v1.0/v1.1 имели формат ``participant|date``; они
+    продолжают читаться через find_day_record (обратная совместимость).
+    """
+    return f"{project.project_id}|{participant_id}|{date_iso}"
+
+
+def find_day_record(
+    sess: Session, project: models.Project, participant_id: str, date_iso: str
+) -> models.DayRecord | None:
+    """Найти день проекта: сначала новый project-scoped id, затем legacy.
+
+    Legacy-запись другого проекта не возвращается: для второго проекта
+    создается отдельная запись с project-scoped id (issue #4).
+    """
+    rec = sess.get(models.DayRecord, day_id_for(project, participant_id, date_iso))
+    if rec is not None:
+        return rec
+    legacy = sess.get(
+        models.DayRecord, f"{participant_id}|{date_iso}"
+    )
+    if legacy is not None and (
+        legacy.project_id is None or legacy.project_id == project.project_id
+    ):
+        return legacy
+    return None
 
 
 def day_intervals(
@@ -457,7 +496,8 @@ def close_day(
     # экспорт и снятие системы не блокируются («данные клиента — у клиента»).
     _license_guard()
     computed = compute_day(sess, project, participant_id, date_iso)
-    day_id = f"{participant_id}|{date_iso}"
+    rec = find_day_record(sess, project, participant_id, date_iso)
+    day_id = rec.day_id if rec is not None else day_id_for(project, participant_id, date_iso)
     cash_cents, equity_cents = calc.cash_split(
         computed["amount_cents"],
         float(computed.get("cash_share_pct", 0.0) or 0.0)
@@ -466,11 +506,17 @@ def close_day(
     )
     sha = _payload_sha(participant_id, date_iso, computed)
 
-    rec = sess.get(models.DayRecord, day_id)
+    if rec is not None and rec.project_id and rec.project_id != project.project_id:
+        raise DomainError(
+            "day_other_project",
+            f"день {day_id} уже принадлежит проекту {rec.project_id!r}",
+            status=409,
+        )
     if rec is None:
         rec = models.DayRecord(day_id=day_id)
         sess.add(rec)
     rec.participant_id = participant_id
+    rec.project_id = project.project_id
     rec.date = date_iso
     rec.tz = computed["tz"]
     rec.paid_seconds = computed["paid_seconds"]
@@ -526,8 +572,8 @@ def get_day(
     date_iso: str,
 ) -> dict:
     """Чтение дня: закрытый — из БД (неизменяемый), незакрытый — preview."""
-    day_id = f"{participant_id}|{date_iso}"
-    rec = sess.get(models.DayRecord, day_id)
+    rec = find_day_record(sess, project, participant_id, date_iso)
+    day_id = rec.day_id if rec is not None else day_id_for(project, participant_id, date_iso)
     if rec is not None and rec.closed:
         flags = [
             f.code

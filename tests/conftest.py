@@ -80,6 +80,8 @@ def factory(tmp_path):
 
 @pytest.fixture()
 def client(factory):
+    from partner_server.config import settings
+
     def override_get_db():
         s = factory()
         try:
@@ -88,6 +90,13 @@ def client(factory):
             s.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:  # lifespan: catch-up
-        yield test_client
-    app.dependency_overrides.pop(get_db, None)
+    # Lifespan (catch-up/retry) не должен трогать локальную data/*.db:
+    # направляем его на тестовую БД той же фикстуры.
+    old_db_url = settings.db_url
+    object.__setattr__(settings, "db_url", str(factory.kw["bind"].url))
+    try:
+        with TestClient(app) as test_client:  # lifespan: catch-up
+            yield test_client
+    finally:
+        object.__setattr__(settings, "db_url", old_db_url)
+        app.dependency_overrides.pop(get_db, None)
