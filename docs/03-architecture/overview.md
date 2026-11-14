@@ -211,7 +211,7 @@ HTTP API: routes.py, connector_routes.py
 5. Экспорт CSV/JSON формируется в браузере из уже загруженных ответов;
    сервер не хранит файлы экспорта.
 
-## 6. API v1.2
+## 6. API v1.3
 
 Полная автогенерация — `/docs` (OpenAPI FastAPI). Группы:
 
@@ -276,3 +276,4 @@ HTTP API: routes.py, connector_routes.py
 | 1.0 | 2026-11-13 | Новая архитектура: сервер + БД + agent-kit + repo-pack |
 | 1.1 | 2026-11-14 | Коннекторы GitHub/Forgejo/Gitea реализованы (вебхуки, факты) |
 | 2.0 | 2026-11-14 | Полный C4 L1–L3 по коду v1.2: контейнеры, компоненты, потоки, фактический API, deployment |
+| 3.0 | 2026-11-14 | v1.3: дашборд `/dashboard`, `/v1/flags`, RBAC-роли, agent_chat push, legal lock |

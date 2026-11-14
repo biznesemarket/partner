@@ -187,7 +187,7 @@ curl -fsS http://localhost:8080/v1/metrics
 эксплуатация и алерты — [docs/07-ops/runbook.md](docs/07-ops/runbook.md),
 политика бэкапов — [ADR-0020](docs/03-architecture/adr/ADR-0020-backup-policy.md).
 
-## Статус · v1.2.0
+## Статус · v1.3.0
 
 Все итерации M0–M9 выполнены: CLI и калькулятор (M1–M3), сервер (M4),
 антифрод и аудит (M5), дайджесты и спор дня (M6), юридический модуль (M7),
@@ -198,12 +198,15 @@ VS Code), коннекторы GitHub/Forgejo/Gitea (вебхуки, `repo_facts
 привязка сессий) и флаг `no_output`. v1.2 — эксплуатация и доверие:
 tenant/RBAC с `PARTNER_TENANT_TOKENS` и `DayRecord.project_id` (#4),
 PostgreSQL и Docker в CI (#5), поставка `partner-tracker` с release-
-артефактами (#6), инвариант закрытого дня по ADR-0021 (#7).
-**171 тест**, CI Linux + Windows + postgres-smoke + package-smoke.
+артефактами (#6), инвариант закрытого дня по ADR-0021 (#7). v1.3 —
+дашборд директора (#10), fail-closed поставка wheel с манифестом,
+транспорт `agent_chat` (B-03), RBAC-роли (T-06), блокировка `legal.yaml`
+(T-04) и обезличенный демо-профиль (T-07).
+**203 теста**, CI Linux + Windows + postgres-smoke + package-smoke.
 Акт приемки v1.0.0 — docs/05-process/release-acceptance.md.
 
-**Что дальше.** P2: веб-дашборд директора (#10), ревью юриста по
-`legal-module.md` (D7), транспорт `agent_chat` (B-03) и RBAC-роли (T-06).
+**Что дальше.** Ревью юриста по `legal-module.md` (D7), онбординг
+клиентских `PARTNER_TRACKER_*` секретов, branch protection после GitHub Pro.
 Порядок и разрывы — в [docs/05-process/backlog.md](docs/05-process/backlog.md).
 
 ## Лицензия
