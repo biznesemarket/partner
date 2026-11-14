@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+*.egg
+pip-wheel-metadata/
+.eggs/
+
+# Инструменты и тесты
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Локальные данные учета (истина — в БД и якорях, не в git)
+data/
+*.sqlite3
+*.db
+ledger/
+
+# Секреты и состояние эксплуатации
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+policy.local.yaml
+legal.yaml
+license-registry.json
+deploy/.env
+deploy/legal/
+deploy/backups/
+deploy/dist/
+
+# Поставка/сборка
+docs-site/
+*.dump
+*.dump.gz
+
+# ОС и редакторы
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp

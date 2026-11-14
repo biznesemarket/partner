@@ -1,0 +1,48 @@
+name: partner-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Установить пакет (CLI + сервер)
+        run: pip install -e ".[dev,server]"
+      - name: Линтер кода (ruff)
+        run: ruff check .
+      - name: Golden-сценарии T-01..T-12 и интеграционные тесты сервера
+        run: pytest -v
+      - name: Проверка миграции Alembic (SQLite upgrade + соответствие моделям)
+        run: |
+          export PARTNER_DB_URL="sqlite:///./data/mig-ci.db"
+          alembic upgrade head
+          alembic check
+          rm -f ./data/mig-ci.db
+      - name: Валидация примеров политики
+        run: |
+          python tools/policy_lint.py docs/02-policy/policy.example.yaml
+          python tools/policy_lint.py repo-pack/policy.example.yaml
+      - name: Сборка docs-сайта (только approved, M9.3)
+        run: |
+          python tools/build_docs_site.py --out docs-site
+          test -f docs-site/index.html
+      - name: Артефакт docs-сайта
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-site-${{ matrix.os }}
+          path: docs-site/

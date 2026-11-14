@@ -1,0 +1,54 @@
+# Состояние юридического модуля (M7, legal-module.md §4)
+#
+# Файл редактируется юристом (команды partner legal-gate / legal-enable
+# или правкой вручную). Персональные данные и подписанные договоры —
+# в закрытом контуре, в git клиента НЕ попадает (legal-module.md §6).
+#
+# Статус гейта: open | done. done требует evidence — документ, дата,
+# подписант (≥5 символов).
+legal:
+  enabled: false        # включение возможно только при снятых G-01…G-08
+  enabled_at: null
+  enabled_by: null
+
+gates:
+  G-01:                 # денежная часть вознаграждения (cash_share_pct), P0
+    status: open
+    evidence: ""
+    actor: null
+    updated_at: null
+  G-02:                 # конструкция обещания доли (фантомная доля), P0
+    status: open
+    evidence: ""
+    actor: null
+    updated_at: null
+  G-03:                 # публичные формулировки продукта и сайта, P1
+    status: open
+    evidence: ""
+    actor: null
+    updated_at: null
+  G-04:                 # хранение и защита данных, P0
+    status: open
+    evidence: ""
+    actor: null
+    updated_at: null
+  G-05:                 # договорная база участника (договор + CLA + NDA), P0
+    status: open
+    evidence: ""
+    actor: null
+    updated_at: null
+  G-06:                 # налоги (НДФЛ, взносы, УСН), P0
+    status: open
+    evidence: ""
+    actor: null
+    updated_at: null
+  G-07:                 # персональные данные и трансграница, P0
+    status: open
+    evidence: ""
+    actor: null
+    updated_at: null
+  G-08:                 # пакет фиксации (создание ООО по снапшоту), P2
+    status: open
+    evidence: ""
+    actor: null
+    updated_at: null

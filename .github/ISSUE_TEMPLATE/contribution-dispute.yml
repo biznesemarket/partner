@@ -1,0 +1,26 @@
+name: contribution-dispute
+description: Спор по начислению дня или месячному снапшоту
+title: "[dispute] "
+labels: ["dispute"]
+body:
+  - type: input
+    id: date
+    attributes:
+      label: Дата дня или месяц снапшота
+      placeholder: 2026-11-12
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Как считаете правильно и почему
+      description: Приложите вывод partner explain, если есть
+    validations:
+      required: true
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Подтверждения
+      options:
+        - label: Спор открыт в течение окна (3 суток для дня, 7 для снапшота)
+        - label: Я не менял принятые записи вручную

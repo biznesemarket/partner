@@ -1,0 +1,37 @@
+name: partner-issue
+description: Задача для ИИ-агента с привязкой сессий учета времени
+title: "[task] "
+labels: ["paid-task"]
+body:
+  - type: input
+    id: branch
+    attributes:
+      label: Ветка
+      description: Ветка, к которой обязаны привязываться сессии учета (no_task_link = не оплачивается)
+      placeholder: dev/ivanov/feature-x
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Цель задачи
+      description: Что должно получиться; критерии приемки (DoD)
+    validations:
+      required: true
+  - type: checkboxes
+    id: dod
+    attributes:
+      label: Definition of Done
+      options:
+        - label: Тесты написаны и проходят (pytest)
+        - label: Документация обновлена, если затронуты правила
+        - label: PR не самоприемка (ревьюер != автор)
+        - label: Сессии агента привязаны к задаче и ветке
+        - label: Автономные отрезки помечены (не выдаются за активное время)
+  - type: checkboxes
+    id: agent
+    attributes:
+      label: AI-агент
+      options:
+        - label: Работаю с ИИ-агентом (учет времени активен)
+        - label: Коммиты агента маркированы Co-authored-by

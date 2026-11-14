@@ -1,0 +1,39 @@
+# CI репозитория клиента: валидация политики «Партнер» при каждом PR.
+# Ставится мастером `partner init` (repo-pack/workflows/).
+name: partner-policy-check
+
+on:
+  pull_request:
+    paths:
+      - "policy.yaml"
+      - "AGENTS.md"
+  push:
+    branches: [main]
+    paths:
+      - "policy.yaml"
+
+jobs:
+  policy-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Установить зависимости валидатора
+        run: pip install partner-tracker
+
+      - name: Проверить policy.yaml
+        run: |
+          python -m partner_cli.policy_lint policy.yaml --as-of "$(date -u +%F)"
+          echo "policy.yaml валидна: правила учета «Партнер» применены"
+
+      - name: Проверить целостность блока AGENTS.md
+        run: |
+          grep -q "BEGIN PARTNER BLOCK" AGENTS.md || {
+            echo "::error::Блок учета «Партнер» отсутствует в AGENTS.md"; exit 1; }
+          grep -q "END PARTNER BLOCK" AGENTS.md || {
+            echo "::error::Незакрытый блок учета в AGENTS.md"; exit 1; }
+          echo "Блок AGENTS.md на месте"

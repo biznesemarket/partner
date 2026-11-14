@@ -1,0 +1,126 @@
+# Docker Compose «Партнера» (M8.1, development-plan.md M8.1):
+# PostgreSQL 16 + сервер (FastAPI, планировщик закрытия дня включен) +
+# разовые джобы: миграции при каждом обновлении, ручное закрытие дня,
+# бэкап по расписанию (cron-переменная PARTNER_BACKUP_CRON).
+#
+# В env — только секреты и адреса (устав установки: secrets не в git):
+# заполнение — из .env (образец deploy/.env.example).
+#
+# Сеть наружу: только server:8080. PostgreSQL не публикуется наружу —
+# доступ только внутри сети compose.
+name: partner
+
+x-server-env: &server-env
+  PARTNER_DB_URL: postgresql+psycopg://partner:${POSTGRES_PASSWORD}@db:5432/partner
+  PARTNER_API_TOKEN: ${PARTNER_API_TOKEN:?задайте в .env}
+  PARTNER_SCHEDULER: "1"                 # джоба закрытия дня 00:00 (ADR-0017)
+  PARTNER_CLOSE_TZ: ${PARTNER_CLOSE_TZ:-Europe/Moscow}
+  PARTNER_GRACE_HOURS: ${PARTNER_GRACE_HOURS:-24}
+  PARTNER_DISPUTE_DAYS: ${PARTNER_DISPUTE_DAYS:-3}
+  PARTNER_LEGAL_FILE: /srv/legal/legal.yaml
+  # каналы доставки M6 (необязательные)
+  PARTNER_WEBHOOK_URL: ${PARTNER_WEBHOOK_URL:-}
+  PARTNER_SMTP_HOST: ${PARTNER_SMTP_HOST:-}
+  PARTNER_SMTP_PORT: ${PARTNER_SMTP_PORT:-587}
+  PARTNER_SMTP_FROM: ${PARTNER_SMTP_FROM:-partner@example.local}
+  PARTNER_SMTP_TO: ${PARTNER_SMTP_TO:-}
+  # M9.1 лицензирование подписки (ADR-0018) — аудит-фикс F9 (P1):
+  # раньше compose не пробрасывал лицензионные переменные, и боевая
+  # установка всегда работала в demo-режиме (REQUIRED=1 был недостижим).
+  PARTNER_LICENSE_KEY: ${PARTNER_LICENSE_KEY:-}
+  PARTNER_LICENSE_SECRET: ${PARTNER_LICENSE_SECRET:-}
+  PARTNER_LICENSE_REQUIRED: ${PARTNER_LICENSE_REQUIRED:-0}
+  PARTNER_LICENSE_GRACE_DAYS: ${PARTNER_LICENSE_GRACE_DAYS:-14}
+  # M9 подпись устройств (threat-model §4)
+  PARTNER_REQUIRE_DEVICE_SIGN: ${PARTNER_REQUIRE_DEVICE_SIGN:-0}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: partner
+      POSTGRES_USER: partner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте в .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U partner -d partner"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: ${PARTNER_IMAGE:-partner:latest}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    # разовый сервис: накатывает схему и завершается (M8.2 порядок обновления)
+    command: alembic upgrade head
+    environment:
+      PARTNER_DB_URL: postgresql+psycopg://partner:${POSTGRES_PASSWORD}@db:5432/partner
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  server:
+    image: ${PARTNER_IMAGE:-partner:latest}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment: *server-env
+    ports:
+      - "${PARTNER_BIND:-127.0.0.1:8080}:8080"
+    volumes:
+      - ./legal:/srv/legal             # legal.yaml — состояние юрмодуля (M7), запись через API/CLI
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ручная разовая джоба закрытия дня (runbook §7: day_close не сработал):
+  #   docker compose run --rm dayclose            # догоняющий прогон
+  #   docker compose run --rm dayclose --date 2026-11-12
+  dayclose:
+    image: ${PARTNER_IMAGE:-partner:latest}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: python -m partner_server.dayclose_cli
+    environment:
+      PARTNER_DB_URL: postgresql+psycopg://partner:${POSTGRES_PASSWORD}@db:5432/partner
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: ["tools"]
+    restart: "no"
+
+  # ежедневный бэкап по расписанию (M8.3); лог — deploy/backups/backup.log
+  # разовый дамп: docker compose exec backup /srv/scripts/backup.sh once
+  backup:
+    image: ${PARTNER_IMAGE:-partner:latest}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    entrypoint: /srv/scripts/backup.sh
+    environment:
+      PGHOST: db
+      PGDATABASE: partner
+      PGUSER: partner
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PARTNER_BACKUP_DIR: /srv/backups
+      PARTNER_BACKUP_KEEP_DAYS: ${PARTNER_BACKUP_KEEP_DAYS:-14}
+      PARTNER_BACKUP_AT: ${PARTNER_BACKUP_AT:-02:00}
+    volumes:
+      - ./backups:/srv/backups
+      - ./scripts:/srv/scripts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db-data:
